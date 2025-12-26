@@ -46,7 +46,7 @@ Render's free tier is perfect for FastAPI, but remember that the disk is **ephem
 ### 2. Remote Vector Store (Optional but Recommended)
 Since Render's disk resets, your FAISS index will be deleted periodically. To fix this:
 - **Option A:** Use [Pinecone](https://www.pinecone.io/) (Serverless free tier). Replace FAISS in `vector_store.py` with Pinecone client.
-- **Option B:** Use [Supabase PgVector](https://supabase.com/).
+- **Option B:** Use [Supabase PgVector](https://supabase.com/). See [Supabase Setup](#supabase-vector-setup) for detailed steps.
 
 ---
 
@@ -99,7 +99,59 @@ origins = [
 app.add_middleware(CORSMiddleware, allow_origins=origins, ...)
 ```
 
-### Step 3: Deployment Checklist
+### Step 3: Supabase Vector Setup (Optional)
+If you chose **Option B** in Phase 2, follow these steps:
+
+1.  **Create a Project:** Sign up at [supabase.com](https://supabase.com/) and create a new project.
+2.  **Enable PgVector:** In the Supabase Dashboard, go to **SQL Editor** and run:
+    ```sql
+    create extension if not exists vector;
+    ```
+3.  **Create Table:** Run the following SQL to create a table for your embeddings (Note: Dimension 384 for local, 1536 for OpenAI):
+    ```sql
+    create table if not exists documents (
+      id bigserial primary key,
+      content text,
+      metadata jsonb,
+      embedding vector(384) -- Change to 1536 if using OpenAI
+    );
+    ```
+4.  **Create Search Function:**
+    ```sql
+    create or replace function match_documents (
+      query_embedding vector(384), -- Change to 1536 if using OpenAI
+      match_threshold float,
+      match_count int
+    )
+    returns table (
+      id bigint,
+      content text,
+      metadata jsonb,
+      similarity float
+    )
+    language plpgsql
+    as $$
+    begin
+      return query
+      select
+        documents.id,
+        documents.content,
+        documents.metadata,
+        1 - (documents.embedding <=> query_embedding) as similarity
+      from documents
+      where 1 - (documents.embedding <=> query_embedding) > match_threshold
+      order by similarity desc
+      limit match_count;
+    end;
+    $$;
+    ```
+5.  **Environment Variables:** Add these to your Render/Local backend `.env`:
+    ```env
+    SUPABASE_URL=your-project-url
+    SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+    ```
+
+### Step 4: Deployment Checklist
 1. [ ] **GitHub Repo:** Frontend and Backend code pushed.
 2. [ ] **Clerk Setup:** Google Login enabled.
 3. [ ] **Render Deployment:** Backend live, env vars set.
