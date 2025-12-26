@@ -1,0 +1,134 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* DOC-GPT Premium Theme - Sleek & Sophisticated */
+
+:root {
+    --bg-primary: #0f1115;
+    --bg-secondary: #1a1d23;
+    --bg-sidebar: #090a0c;
+    --accent: #3a86ff;
+    --accent-hover: #4361ee;
+    --text-primary: #ffffff;
+    --text-secondary: #94a3b8;
+    --border: rgba(255, 255, 255, 0.1);
+    --chat-user: #2d333d;
+    --chat-ai: transparent;
+}
+
+body {
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* Premium Scrollbar */
+::-webkit-scrollbar {
+    width: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+/* Typography */
+h1,
+h2,
+h3,
+.font-display {
+    font-family: 'Outfit', sans-serif;
+}
+
+/* Components */
+.premium-card {
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+.sidebar {
+    background-color: var(--bg-sidebar);
+    border-right: 1px solid var(--border);
+}
+
+/* Chat Input */
+.chat-input-container {
+    background: linear-gradient(180deg, transparent, var(--bg-primary) 20%);
+}
+
+.chat-input {
+    background-color: #20242a;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    color: white;
+    transition: all 0.2s ease;
+}
+
+.chat-input:focus {
+    border-color: var(--accent);
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(58, 134, 255, 0.2);
+}
+
+/* Buttons */
+.btn-primary {
+    background-color: var(--accent);
+    color: white;
+    border-radius: 8px;
+    font-weight: 600;
+    transition: all 0.2s ease;
+}
+
+.btn-primary:hover {
+    background-color: var(--accent-hover);
+    transform: translateY(-1px);
+}
+
+.btn-ghost {
+    background-color: transparent;
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    transition: all 0.2s ease;
+}
+
+.btn-ghost:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+    color: white;
+}
+
+/* Markdown Context */
+.prose {
+    color: var(--text-secondary);
+    line-height: 1.6;
+}
+
+.prose strong {
+    color: var(--text-primary);
+}
+
+/* Utils */
+.glass {
+    background: rgba(26, 29, 35, 0.8);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.text-gradient {
+    background: linear-gradient(135deg, #fff 0%, #94a3b8 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
