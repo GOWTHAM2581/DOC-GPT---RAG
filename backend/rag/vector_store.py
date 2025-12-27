@@ -75,7 +75,7 @@ class VectorStore:
             for i in range(0, len(rows), batch_size):
                 batch = rows[i:i+batch_size]
                 try:
-                    self.supabase.table("imaged_vectors").insert(batch).execute()
+                    self.supabase.table("documents").insert(batch).execute()
                     print(f"Uploaded batch {i//batch_size + 1}")
                 except Exception as e:
                     print(f"Error inserting batch to Supabase: {e}")

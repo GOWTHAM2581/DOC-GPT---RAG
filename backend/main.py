@@ -39,7 +39,7 @@ async def lifespan(app: FastAPI):
         if global_vector_store.use_supabase:
             # Check if we have data in Supabase (simple check)
             try:
-                res = global_vector_store.supabase.table("imaged_vectors").select("id", count="exact").limit(1).execute()
+                res = global_vector_store.supabase.table("documents").select("id", count="exact").limit(1).execute()
                 count = res.count
                 if count and count > 0:
                     indexing_state["is_indexed"] = True
