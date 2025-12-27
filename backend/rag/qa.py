@@ -82,14 +82,23 @@ class QuestionAnswerer:
 
         # Step 2: Build context
         context_chunks = []
-        for score, idx in zip(scores, indices):
-            context_chunks.append(
-                {
-                    "text": self.chunks_data[idx]["text"],
-                    "page": self.chunks_data[idx]["page"],
+        for score, item in zip(scores, indices):
+            if isinstance(item, int):
+                # FAISS: item is an index into self.chunks_data
+                if item < len(self.chunks_data):
+                    chunk = self.chunks_data[item]
+                    context_chunks.append({
+                        "text": chunk["text"],
+                        "page": chunk["page"],
+                        "score": float(score),
+                    })
+            else:
+                # Supabase: item is the chunk object itself
+                context_chunks.append({
+                    "text": item.get("content") or item.get("text", ""),
+                    "page": item.get("metadata", {}).get("page", 0) if "metadata" in item else item.get("page", 0),
                     "score": float(score),
-                }
-            )
+                })
 
         confidence_score = max(scores)
 

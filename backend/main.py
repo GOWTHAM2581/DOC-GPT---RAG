@@ -154,19 +154,21 @@ async def upload_document(file: UploadFile = File(...)):
         vector_store = VectorStore(embedder)
         
         # Extract just the text for embedding
-        chunk_texts = [chunk["text"] for chunk in chunks_data]
-        vector_store.build_index(chunk_texts)
+        # Pass full chunks data to build_index (handles both FAISS and Supabase)
+        vector_store.build_index(chunks_data)
         
         print(f"Generated embeddings and built FAISS index")
         
         # Step 6: Save chunks metadata and vector index
+        # Step 6: Save chunks metadata and vector index (Only for FAISS fallback)
+        # If using Supabase, we don't strictly need these, but saving them doesn't hurt for backup
         chunks_path = os.path.join(DATA_DIR, "chunks.json")
         with open(chunks_path, "w", encoding="utf-8") as f:
             json.dump(chunks_data, f, indent=2, ensure_ascii=False)
         
         vector_store.save_index(os.path.join(DATA_DIR, "vectors.index"))
         
-        print(f"Saved chunks and index to disk")
+        print(f"Index processing complete")
         
         # Update indexing state
         indexing_state["is_indexed"] = True
@@ -210,14 +212,20 @@ async def ask_question(request: AskRequest):
             )
         
         # Load chunks metadata
+        # Load chunks metadata (needed for FAISS fallback)
+        chunks_data = []
         chunks_path = os.path.join(DATA_DIR, "chunks.json")
-        with open(chunks_path, "r", encoding="utf-8") as f:
-            chunks_data = json.load(f)
+        if os.path.exists(chunks_path):
+            with open(chunks_path, "r", encoding="utf-8") as f:
+                chunks_data = json.load(f)
         
         # Initialize components
         embedder = EmbeddingGenerator()
         vector_store = VectorStore(embedder)
-        vector_store.load_index(os.path.join(DATA_DIR, "vectors.index"))
+        
+        # Only load local index if NOT using Supabase
+        if not vector_store.use_supabase:
+            vector_store.load_index(os.path.join(DATA_DIR, "vectors.index"))
         
         qa = QuestionAnswerer(
             vector_store=vector_store,
