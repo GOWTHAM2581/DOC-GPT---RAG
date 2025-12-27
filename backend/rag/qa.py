@@ -249,11 +249,12 @@ Standalone Query:"""
     # FALLBACK (NO LLM)
     # -------------------------------
     def _generate_fallback_answer(self, context_chunks: List[Dict]) -> str:
-        summary = "Extracted relevant information from the document:\n\n"
-        for chunk in context_chunks:
-            summary += f"• From [Page {chunk['page']}]: {chunk['text'][:200]}...\n"
+        # User-friendly fallback when no LLM is connected
+        summary = "### 📄 Relevant Excerpts Found:\n\n"
+        for i, chunk in enumerate(context_chunks, 1):
+             text_preview = chunk['text'].replace('\n', ' ').strip()
+             summary += f"**{i}. Page {chunk['page']}**\n> \"{text_preview}\"\n\n"
         
-        summary += "\n(LLM configuration not found. Please provide a valid API Key for precise summaries.)"
         return summary
 
     # -------------------------------
