@@ -26,7 +26,18 @@ app = FastAPI(
 )
 
 # CORS configuration - Load from environment for production
-CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://localhost:3000,https://doc-gpt-rag.vercel.app").split(",")
+origins_env = os.getenv("CORS_ORIGINS", "")
+CORS_ORIGINS = origins_env.split(",") if origins_env else []
+
+# Always include development and production URLs
+default_origins = [
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "https://doc-gpt-rag.vercel.app"
+]
+
+# Merge unique origins
+CORS_ORIGINS = list(set(CORS_ORIGINS + default_origins))
 
 app.add_middleware(
     CORSMiddleware,
