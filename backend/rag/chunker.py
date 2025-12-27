@@ -67,31 +67,26 @@ class TextChunker:
     
     def _chunk_text(self, text: str, page_num: int, start_chunk_id: int) -> List[Dict[str, any]]:
         """
-        Chunk a single text with overlap
-        
-        Args:
-            text: Text to chunk
-            page_num: Page number for metadata
-            start_chunk_id: Starting chunk ID
-            
-        Returns:
-            List of chunk dictionaries
+        Chunk text respecting word boundaries
         """
         chunks = []
         text_len = len(text)
-        
-        # Start position for each chunk
         start = 0
         chunk_id = start_chunk_id
         
         while start < text_len:
-            # Calculate end position
             end = min(start + self.chunk_size, text_len)
             
-            # Extract chunk
+            # Snap to nearest space if we are not at the end of the text
+            if end < text_len:
+                # Look for last space within the chunk to avoid cutting words
+                # Scan backwards from 'end' up to 50% of the chunk size
+                last_space = text.rfind(' ', start, end)
+                if last_space != -1:
+                    end = last_space
+            
             chunk_text = text[start:end].strip()
             
-            # Only add non-empty chunks
             if chunk_text:
                 chunks.append({
                     "chunk_id": chunk_id,
@@ -103,11 +98,24 @@ class TextChunker:
                 })
                 chunk_id += 1
             
-            # Move to next chunk with overlap
-            # If we're at the end, break to avoid infinite loop
             if end == text_len:
                 break
+                
+            # Overlap logic: Move start back by overlap amount, 
+            # but ensure we align to a space to keep the next chunk clean too
+            next_start = end - self.overlap
+            if next_start < 0: next_start = 0
             
-            start = end - self.overlap
+            # Find nearest space for the next start position to avoid starting in middle of word
+            # We search *forward* from the overlap point
+            next_space = text.find(' ', next_start)
+            if next_space != -1 and next_space < end:
+                 start = next_space + 1
+            else:
+                 start = next_start
+
+            # Edge case safe guard: ensure forward progress
+            if start >= end:
+                start = end # No overlap possible if word is huge, just continue
         
         return chunks
