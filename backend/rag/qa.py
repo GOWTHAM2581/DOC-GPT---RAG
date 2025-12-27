@@ -249,11 +249,11 @@ Standalone Query:"""
     # FALLBACK (NO LLM)
     # -------------------------------
     def _generate_fallback_answer(self, context_chunks: List[Dict]) -> str:
-        # User-friendly fallback when no LLM is connected
-        summary = "### 📄 Relevant Excerpts Found:\n\n"
+        # User-friendly fallback - Plain text formatting
+        summary = "Relevant Excerpts Found:\n\n"
         for i, chunk in enumerate(context_chunks, 1):
              text_preview = chunk['text'].replace('\n', ' ').strip()
-             summary += f"**{i}. Page {chunk['page']}**\n> \"{text_preview}\"\n\n"
+             summary += f"{i}. Page {chunk['page']}\n{text_preview}\n\n"
         
         return summary
 
