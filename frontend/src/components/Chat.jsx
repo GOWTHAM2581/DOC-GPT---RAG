@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { askQuestion } from '../services/api';
 
-export default function Chat({ documentName, totalChunks, onReset }) {
+export default function Chat({ documentName, totalChunks, onReset, suggestions = [] }) {
     const [messages, setMessages] = useState([]);
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -75,18 +75,19 @@ export default function Chat({ documentName, totalChunks, onReset }) {
                                 Ask specific questions about the document. I will provide precise answers based on the {totalChunks} indexed segments.
                             </p>
                             <div className="mt-8 grid grid-cols-1 gap-3 w-full max-w-md px-4">
-                                <button
-                                    onClick={() => setInput("What are the key takeaways?")}
-                                    className="p-4 border border-white/10 rounded-xl bg-white/5 hover:bg-white/10 text-left text-xs md:text-sm transition-colors"
-                                >
-                                    Summarize the main points
-                                </button>
-                                <button
-                                    onClick={() => setInput("Identify all mentioned skills or requirements.")}
-                                    className="p-4 border border-white/10 rounded-xl bg-white/5 hover:bg-white/10 text-left text-xs md:text-sm transition-colors"
-                                >
-                                    List technical requirements
-                                </button>
+                                {(suggestions && suggestions.length > 0 ? suggestions : [
+                                    "Summarize the main points",
+                                    "List technical requirements",
+                                    "What are the key conclusions?"
+                                ]).map((suggestion, idx) => (
+                                    <button
+                                        key={idx}
+                                        onClick={() => setInput(suggestion)}
+                                        className="p-4 border border-white/10 rounded-xl bg-white/5 hover:bg-white/10 text-left text-xs md:text-sm transition-colors hover:bg-blue-600/20 hover:border-blue-500/30"
+                                    >
+                                        {suggestion}
+                                    </button>
+                                ))}
                             </div>
                         </div>
                     )}
@@ -154,7 +155,7 @@ export default function Chat({ documentName, totalChunks, onReset }) {
                 </div>
             </div>
 
-            {/* Input Area - Adjusted for button alignment and responsiveness */}
+            {/* Input Area */}
             <div className="p-4 md:p-6 bg-gradient-to-t from-[#0f1115] via-[#0f1115] to-transparent">
                 <form onSubmit={handleSubmit} className="max-w-3xl mx-auto relative flex items-center">
                     <input

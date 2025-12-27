@@ -109,7 +109,7 @@ indexing_state = {
 }
 
 
-# Request/Response models
+# Request/Response models updated
 class AskRequest(BaseModel):
     question: str
     history: Optional[list] = []
@@ -127,6 +127,7 @@ class UploadResponse(BaseModel):
     message: str
     chunks_created: int
     document_name: str
+    suggestions: Optional[list] = []
 
 
 class StatusResponse(BaseModel):
@@ -134,41 +135,14 @@ class StatusResponse(BaseModel):
     document_name: Optional[str]
     indexed_at: Optional[str]
     total_chunks: int
+    suggestions: Optional[list] = []
 
-
-@app.get("/")
-async def root():
-    """Health check endpoint"""
-    return {
-        "status": "online",
-        "service": "RAG Document Q&A API",
-        "version": "1.0.0"
-    }
-
-
-@app.get("/status", response_model=StatusResponse)
-async def get_status():
-    """
-    Get indexing status
-    Returns whether a document is indexed and ready for Q&A
-    """
-    return StatusResponse(**indexing_state)
-
+# ... [Keep existing code] ...
 
 @app.post("/upload", response_model=UploadResponse)
 async def upload_document(file: UploadFile = File(...)):
     """
     Upload and index a PDF document
-    
-    Flow:
-    1. Save uploaded PDF
-    2. Extract text (page-wise)
-    3. Chunk with overlap
-    4. Generate embeddings
-    5. Store in FAISS
-    6. Update indexing state
-    
-    Anti-hallucination: Creates the knowledge base for Q&A
     """
     try:
         # Validate file type
@@ -192,25 +166,62 @@ async def upload_document(file: UploadFile = File(...)):
         
         print(f"Extracted text from {len(pages_text)} pages")
         
+        # --- Suggestion Generation Logic (Simple Heuristic for Free Tier) ---
+        suggestions = []
+        try:
+            # 1. Gather potential headings from first few pages
+            potential_headings = []
+            for page in pages_text[:5]: # Check first 5 pages
+                lines = page['text'].split('\n')
+                for line in lines:
+                    line = line.strip()
+                    # Check for "Heading-like" properties: Short, casing, no period
+                    if 4 < len(line) < 50 and not line.endswith('.'):
+                        if line.isupper() or line.istitle():
+                            # Remove common junk
+                            if not any(x in line.lower() for x in ['page', 'copyright', 'www', 'http']):
+                                potential_headings.append(line)
+            
+            # 2. Filter and create questions
+            unique_headings = sorted(list(set(potential_headings)), key=len, reverse=True)
+            
+            # Select top 3 interesting headings
+            selected_topics = unique_headings[:3]
+            
+            if selected_topics:
+                 for topic in selected_topics:
+                     suggestions.append(f"Explain about {topic}")
+            else:
+                 # Fallback if no clean headings found
+                 suggestions = [
+                     f"Summarize the main points of {file.filename}",
+                     "What are the key technical requirements?",
+                     "List the important conclusions"
+                 ]
+                 
+            # Limit to 3
+            suggestions = suggestions[:3]
+            
+        except Exception as e:
+            print(f"Suggestion generation error: {e}")
+            suggestions = [f"Summarize {file.filename}", "Key takeaways"]
+
+        
         # Step 3: Chunk with overlap
         chunker = TextChunker(chunk_size=400, overlap=80)
         chunks_data = chunker.create_chunks(pages_text)
         
         print(f"Created {len(chunks_data)} chunks")
         
-        # Step 4 & 5: Generate embeddings and store in FAISS/Supabase
-        # Use Global Vector Store
+        # Step 4 & 5: Vector Store
         if global_vector_store is None:
              raise HTTPException(status_code=500, detail="Vector Store not initialized")
              
-        # Pass full chunks data to build_index (handles both FAISS and Supabase)
         global_vector_store.build_index(chunks_data)
         
         print(f"Generated embeddings and built index")
         
-        # Step 6: Save chunks metadata and vector index
-        # Step 6: Save chunks metadata and vector index (Only for FAISS fallback)
-        # If using Supabase, we don't strictly need these, but saving them doesn't hurt for backup
+        # Step 6: Save metadata
         chunks_path = os.path.join(DATA_DIR, "chunks.json")
         with open(chunks_path, "w", encoding="utf-8") as f:
             json.dump(chunks_data, f, indent=2, ensure_ascii=False)
@@ -224,12 +235,14 @@ async def upload_document(file: UploadFile = File(...)):
         indexing_state["document_name"] = file.filename
         indexing_state["indexed_at"] = datetime.now().isoformat()
         indexing_state["total_chunks"] = len(chunks_data)
+        indexing_state["suggestions"] = suggestions # Store in memory
         
         return UploadResponse(
             status="success",
             message=f"Successfully indexed {file.filename}",
             chunks_created=len(chunks_data),
-            document_name=file.filename
+            document_name=file.filename,
+            suggestions=suggestions
         )
         
     except Exception as e:
