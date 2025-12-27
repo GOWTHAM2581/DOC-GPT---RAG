@@ -4,7 +4,7 @@ Creates vector embeddings using sentence transformers
 """
 
 import os
-from sentence_transformers import SentenceTransformer
+# from sentence_transformers import SentenceTransformer # moved to inside class to prevent heavy load if using API
 import numpy as np
 from typing import List
 
@@ -36,6 +36,8 @@ class EmbeddingGenerator:
                 print("Detected Groq key in OPENAI_API_KEY variable. Falling back to local embeddings.")
             
             print(f"Loading local embedding model: {model_name}")
+            # Lazy import to save memory if using API
+            from sentence_transformers import SentenceTransformer
             self.model = SentenceTransformer(model_name)
             self.embedding_dim = self.model.get_sentence_embedding_dimension()
             self.use_openai = False
