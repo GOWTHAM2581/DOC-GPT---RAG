@@ -18,11 +18,60 @@ from rag.embedder import EmbeddingGenerator
 from rag.vector_store import VectorStore
 from rag.qa import QuestionAnswerer
 
+from contextlib import asynccontextmanager
+
+# Global components (Singleton pattern to prevent OOM)
+global_embedder = None
+global_vector_store = None
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Load heavy AI models once on startup
+    """
+    global global_embedder, global_vector_store
+    print("🚀 Starting up: Loading AI Models...")
+    try:
+        global_embedder = EmbeddingGenerator()
+        global_vector_store = VectorStore(global_embedder)
+        
+        # Determine initial indexing state
+        if global_vector_store.use_supabase:
+            # Check if we have data in Supabase (simple check)
+            try:
+                res = global_vector_store.supabase.table("imaged_vectors").select("id", count="exact").limit(1).execute()
+                count = res.count
+                if count and count > 0:
+                    indexing_state["is_indexed"] = True
+                    indexing_state["total_chunks"] = count
+                    print(f"✅ Detected {count} existing chunks in Supabase")
+            except Exception as e:
+                print(f"⚠️ Could not check Supabase status: {e}")
+        else:
+            # Check local files
+            if os.path.exists(os.path.join(DATA_DIR, "vectors.index")):
+                 try:
+                    global_vector_store.load_index(os.path.join(DATA_DIR, "vectors.index"))
+                    indexing_state["is_indexed"] = True
+                    print("✅ Loaded existing FAISS index from disk")
+                 except:
+                    print("⚠️ Failed to load existing index")
+                    
+        print("✅ Startup complete")
+    except Exception as e:
+        print(f"❌ Startup Error: {e}")
+    
+    yield
+    
+    # Clean up
+    print("🛑 Shutting down...")
+
 # Initialize FastAPI app
 app = FastAPI(
     title="RAG Document Q&A API",
     description="Anti-hallucination RAG system with strict threshold guardrails",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 # CORS configuration - Load from environment for production
@@ -149,15 +198,15 @@ async def upload_document(file: UploadFile = File(...)):
         
         print(f"Created {len(chunks_data)} chunks")
         
-        # Step 4 & 5: Generate embeddings and store in FAISS
-        embedder = EmbeddingGenerator()
-        vector_store = VectorStore(embedder)
-        
-        # Extract just the text for embedding
+        # Step 4 & 5: Generate embeddings and store in FAISS/Supabase
+        # Use Global Vector Store
+        if global_vector_store is None:
+             raise HTTPException(status_code=500, detail="Vector Store not initialized")
+             
         # Pass full chunks data to build_index (handles both FAISS and Supabase)
-        vector_store.build_index(chunks_data)
+        global_vector_store.build_index(chunks_data)
         
-        print(f"Generated embeddings and built FAISS index")
+        print(f"Generated embeddings and built index")
         
         # Step 6: Save chunks metadata and vector index
         # Step 6: Save chunks metadata and vector index (Only for FAISS fallback)
@@ -166,7 +215,7 @@ async def upload_document(file: UploadFile = File(...)):
         with open(chunks_path, "w", encoding="utf-8") as f:
             json.dump(chunks_data, f, indent=2, ensure_ascii=False)
         
-        vector_store.save_index(os.path.join(DATA_DIR, "vectors.index"))
+        global_vector_store.save_index(os.path.join(DATA_DIR, "vectors.index"))
         
         print(f"Index processing complete")
         
@@ -219,16 +268,16 @@ async def ask_question(request: AskRequest):
             with open(chunks_path, "r", encoding="utf-8") as f:
                 chunks_data = json.load(f)
         
-        # Initialize components
-        embedder = EmbeddingGenerator()
-        vector_store = VectorStore(embedder)
+        # Initialize components - USE GLOBAL
+        if global_vector_store is None:
+             raise HTTPException(status_code=500, detail="Vector Store not initialized")
         
-        # Only load local index if NOT using Supabase
-        if not vector_store.use_supabase:
-            vector_store.load_index(os.path.join(DATA_DIR, "vectors.index"))
+        # Only load local index if NOT using Supabase (and using FAISS)
+        # We already loaded in lifespan, but if Supabase is used, we don't need load_index
+        # If FAISS is used, it's already in memory in global_vector_store
         
         qa = QuestionAnswerer(
-            vector_store=vector_store,
+            vector_store=global_vector_store,
             chunks_data=chunks_data,
             top_k=3,
             use_llm=True
