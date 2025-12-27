@@ -1,3 +1,12 @@
+---
+title: Doc Gpt Backend
+emoji: 🦀
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+pinned: false
+app_port: 7860
+---
 # RAG Document Q&A Application
 
 A production-ready Retrieval-Augmented Generation (RAG) system with strict anti-hallucination guardrails.
