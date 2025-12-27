@@ -41,8 +41,8 @@ class EmbeddingGenerator:
         # 2. Try HuggingFace API (Lightweight, Free)
         elif self.hf_api_key:
             self.mode = "huggingface"
-            # Using exact URL for this specific model to avoid any f-string/path issues
-            self.api_url = "https://api-inference.huggingface.co/models/sentence-transformers/all-MiniLM-L6-v2"
+            # Using new Router URL with full model ID
+            self.api_url = "https://router.huggingface.co/hf-inference/models/sentence-transformers/all-MiniLM-L6-v2"
             self.headers = {"Authorization": f"Bearer {self.hf_api_key}"}
             self.embedding_dim = 384
             print(f"Using HuggingFace Inference API for {model_name}")
