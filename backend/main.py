@@ -26,7 +26,7 @@ app = FastAPI(
 )
 
 # CORS configuration - Load from environment for production
-CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://localhost:3000").split(",")
+CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://localhost:3000,https://doc-gpt-rag.vercel.app").split(",")
 
 app.add_middleware(
     CORSMiddleware,
@@ -121,7 +121,7 @@ async def upload_document(file: UploadFile = File(...)):
             content = await file.read()
             buffer.write(content)
         
-        print(f"📁 File saved: {file.filename}")
+        print(f"File saved: {file.filename}")
         
         # Step 2: Extract text from PDF
         loader = PDFLoader()
@@ -130,13 +130,13 @@ async def upload_document(file: UploadFile = File(...)):
         if not pages_text:
             raise HTTPException(status_code=400, detail="Could not extract text from PDF")
         
-        print(f"📄 Extracted text from {len(pages_text)} pages")
+        print(f"Extracted text from {len(pages_text)} pages")
         
         # Step 3: Chunk with overlap
         chunker = TextChunker(chunk_size=400, overlap=80)
         chunks_data = chunker.create_chunks(pages_text)
         
-        print(f"✂️ Created {len(chunks_data)} chunks")
+        print(f"Created {len(chunks_data)} chunks")
         
         # Step 4 & 5: Generate embeddings and store in FAISS
         embedder = EmbeddingGenerator()
@@ -146,7 +146,7 @@ async def upload_document(file: UploadFile = File(...)):
         chunk_texts = [chunk["text"] for chunk in chunks_data]
         vector_store.build_index(chunk_texts)
         
-        print(f"🧠 Generated embeddings and built FAISS index")
+        print(f"Generated embeddings and built FAISS index")
         
         # Step 6: Save chunks metadata and vector index
         chunks_path = os.path.join(DATA_DIR, "chunks.json")
@@ -155,7 +155,7 @@ async def upload_document(file: UploadFile = File(...)):
         
         vector_store.save_index(os.path.join(DATA_DIR, "vectors.index"))
         
-        print(f"💾 Saved chunks and index to disk")
+        print(f"Saved chunks and index to disk")
         
         # Update indexing state
         indexing_state["is_indexed"] = True
@@ -171,7 +171,7 @@ async def upload_document(file: UploadFile = File(...)):
         )
         
     except Exception as e:
-        print(f"❌ Error during upload: {str(e)}")
+        print(f"Error during upload: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
 
@@ -220,9 +220,9 @@ async def ask_question(request: AskRequest):
         result = qa.answer_question(request.question, request.history)
         
         # Log for debugging
-        print(f"❓ Question: {request.question}")
-        print(f"📊 Confidence: {result['confidence_score']:.3f}")
-        print(f"✅ Has relevant data: {result['has_relevant_data']}")
+        print(f"Question: {request.question}")
+        print(f"Confidence: {result['confidence_score']:.3f}")
+        print(f"Has relevant data: {result['has_relevant_data']}")
         
         return AskResponse(
             answer=result["answer"],
@@ -234,7 +234,7 @@ async def ask_question(request: AskRequest):
     except HTTPException:
         raise
     except Exception as e:
-        print(f"❌ Error during Q&A: {str(e)}")
+        print(f"Error during Q&A: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Q&A failed: {str(e)}")
 
 

@@ -30,16 +30,16 @@ class EmbeddingGenerator:
             self.client = OpenAI(api_key=self.openai_api_key)
             self.use_openai = True
             self.embedding_dim = 1536  # Ada-002 dimension
-            print("🧠 Using OpenAI embeddings (text-embedding-ada-002)")
+            print("Using OpenAI embeddings (text-embedding-ada-002)")
         else:
             if self.openai_api_key and self.openai_api_key.startswith("gsk_"):
-                print("⚠️ Detected Groq key in OPENAI_API_KEY variable. Falling back to local embeddings.")
+                print("Detected Groq key in OPENAI_API_KEY variable. Falling back to local embeddings.")
             
-            print(f"🧠 Loading local embedding model: {model_name}")
+            print(f"Loading local embedding model: {model_name}")
             self.model = SentenceTransformer(model_name)
             self.embedding_dim = self.model.get_sentence_embedding_dimension()
             self.use_openai = False
-            print(f"✅ Model loaded - Dimension: {self.embedding_dim}")
+            print(f"Model loaded - Dimension: {self.embedding_dim}")
     
     def embed_texts(self, texts: List[str]) -> np.ndarray:
         """Generate embeddings for multiple texts"""
@@ -47,14 +47,14 @@ class EmbeddingGenerator:
             raise ValueError("Cannot embed empty text list")
         
         if self.use_openai:
-            print(f"🔄 Embedding {len(texts)} texts via OpenAI...")
+            print(f"Embedding {len(texts)} texts via OpenAI...")
             embeddings = []
             for text in texts:
                 response = self.client.embeddings.create(input=text, model="text-embedding-ada-002")
                 embeddings.append(response.data[0].embedding)
             return np.array(embeddings).astype('float32')
         
-        print(f"🔄 Embedding {len(texts)} texts locally...")
+        print(f"Embedding {len(texts)} texts locally...")
         embeddings = self.model.encode(
             texts,
             show_progress_bar=True,

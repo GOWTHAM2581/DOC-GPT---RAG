@@ -38,7 +38,7 @@ class QuestionAnswerer:
                 from openai import OpenAI
                 self.client = OpenAI(api_key=openai_api_key)
                 self.llm_type = "openai"
-                print("✅ OpenAI LLM initialized (gpt-3.5-turbo)")
+                print("OpenAI LLM initialized (gpt-3.5-turbo)")
                 return
 
             # Check Groq Key
@@ -53,14 +53,14 @@ class QuestionAnswerer:
                     max_tokens=512,
                 )
                 self.llm_type = "groq"
-                print("✅ Groq LLM initialized (llama-3.1-8b-instant)")
+                print("Groq LLM initialized (llama-3.1-8b-instant)")
                 return
 
-            print("⚠️ No valid LLM keys found. LLM disabled.")
+            print("No valid LLM keys found. LLM disabled.")
             self.use_llm = False
 
         except Exception as e:
-            print(f"⚠️ Failed to initialize LLM: {e}")
+            print(f"Failed to initialize LLM: {e}")
             self.use_llm = False
 
     # -------------------------------
@@ -72,7 +72,7 @@ class QuestionAnswerer:
         search_query = question
         if history and len(question.split()) < 5:
             search_query = self._condense_question(question, history)
-            print(f"🔄 Condensed Query: {search_query}")
+            print(f"Condensed Query: {search_query}")
 
         # Step 1: Vector search
         scores, indices = self.vector_store.search(search_query, self.top_k)
@@ -156,7 +156,7 @@ Standalone Query:"""
                 response = self.llm.invoke([{"role": "user", "content": prompt}])
                 return response.content.strip()
         except Exception as e:
-            print(f"⚠️ Condensing failed: {e}")
+            print(f"Condensing failed: {e}")
             return question
         
         return question
@@ -196,7 +196,7 @@ Standalone Query:"""
             )
             return response.choices[0].message.content
         except Exception as e:
-            print(f"⚠️ OpenAI Error: {e}")
+            print(f"OpenAI Error: {e}")
             return self._generate_fallback_answer(context_chunks)
 
     # -------------------------------
@@ -233,7 +233,7 @@ Standalone Query:"""
             return response.content
 
         except Exception as e:
-            print(f"⚠️ Groq LLM error: {e}")
+            print(f"Groq LLM error: {e}")
             return self._generate_fallback_answer(context_chunks)
 
     # -------------------------------
@@ -244,7 +244,7 @@ Standalone Query:"""
         for chunk in context_chunks:
             summary += f"• From [Page {chunk['page']}]: {chunk['text'][:200]}...\n"
         
-        summary += "\n⚠️ (LLM configuration not found. Please provide a valid API Key for precise summaries.)"
+        summary += "\n(LLM configuration not found. Please provide a valid API Key for precise summaries.)"
         return summary
 
     # -------------------------------

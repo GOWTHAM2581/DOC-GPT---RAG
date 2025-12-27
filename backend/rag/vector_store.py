@@ -49,7 +49,7 @@ class VectorStore:
         # Add vectors to index
         self.index.add(embeddings)
         
-        print(f"✅ FAISS index built with {self.index.ntotal} vectors")
+        print(f"FAISS index built with {self.index.ntotal} vectors")
     
     def search(self, query: str, top_k: int = 3) -> Tuple[List[float], List[int]]:
         """
@@ -94,7 +94,7 @@ class VectorStore:
             raise ValueError("No index to save")
         
         faiss.write_index(self.index, path)
-        print(f"💾 Index saved to: {path}")
+        print(f"Index saved to: {path}")
     
     def load_index(self, path: str):
         """
@@ -107,4 +107,4 @@ class VectorStore:
             raise FileNotFoundError(f"Index file not found: {path}")
         
         self.index = faiss.read_index(path)
-        print(f"📂 Index loaded from: {path} ({self.index.ntotal} vectors)")
+        print(f"Index loaded from: {path} ({self.index.ntotal} vectors)")

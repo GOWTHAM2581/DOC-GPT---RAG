@@ -38,7 +38,7 @@ class PDFLoader:
                 pdf_reader = PyPDF2.PdfReader(file)
                 total_pages = len(pdf_reader.pages)
                 
-                print(f"📖 Processing PDF with {total_pages} pages...")
+                print(f"Processing PDF with {total_pages} pages...")
                 
                 for page_num, page in enumerate(pdf_reader.pages, start=1):
                     text = page.extract_text()
@@ -49,14 +49,14 @@ class PDFLoader:
                             "page": page_num,
                             "text": text.strip()
                         })
-                        print(f"  ✓ Page {page_num}/{total_pages} - {len(text)} chars")
+                        print(f"  [OK] Page {page_num}/{total_pages} - {len(text)} chars")
                     else:
-                        print(f"  ⚠ Page {page_num}/{total_pages} - No text found")
+                        print(f"  [WARN] Page {page_num}/{total_pages} - No text found")
                 
-                print(f"✅ Extracted text from {len(pages_text)} pages")
+                print(f"Extracted text from {len(pages_text)} pages")
                 
         except Exception as e:
-            print(f"❌ Error extracting PDF: {str(e)}")
+            print(f"Error extracting PDF: {str(e)}")
             raise
         
         return pages_text
