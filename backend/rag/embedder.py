@@ -38,16 +38,12 @@ class EmbeddingGenerator:
             self.embedding_dim = 1536
             print("Using OpenAI embeddings (text-embedding-ada-002)")
             
-        # 2. Try HuggingFace API (Lightweight, Free)
-        elif self.hf_api_key:
-            self.mode = "huggingface"
-            # Using new Router URL with full model ID
-            self.api_url = "https://router.huggingface.co/hf-inference/models/sentence-transformers/all-MiniLM-L6-v2"
-            self.headers = {"Authorization": f"Bearer {self.hf_api_key}"}
-            self.embedding_dim = 384
-            print(f"Using HuggingFace Inference API for {model_name}")
+        # 2. Try HuggingFace API (DISABLED due to permission issues)
+        # elif self.hf_api_key:
+        #    ...
             
-        # 3. Fallback to Local (Heavy)
+        # 3. Fallback to Local (Heavy but reliable on HF Spaces)
+        # HF Spaces has 16GB RAM, so this is perfectly fine!
         else:
             print(f"Loading local embedding model: {model_name}")
             print("WARN: This uses significant RAM and may crash on free hosting tiers.")
