@@ -48,7 +48,7 @@ class QuestionAnswerer:
                 from langchain_groq import ChatGroq
                 self.llm = ChatGroq(
                     groq_api_key=groq_api_key,
-                    model_name="llama-3.1-8b-instant",
+                    model_name="llama3-8b-8192", # Correct model name for Groq
                     temperature=0.1,
                     max_tokens=512,
                 )
