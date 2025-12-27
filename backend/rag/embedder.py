@@ -38,13 +38,12 @@ class EmbeddingGenerator:
             self.embedding_dim = 1536
             print("Using OpenAI embeddings (text-embedding-ada-002)")
             
-        # 2. Try HuggingFace API (DISABLED due to permission issues)
+        # 2. Try HuggingFace API (DISABLED)
         # elif self.hf_api_key:
-        #    ...
-            
+        
         # 3. Fallback to Local (Heavy but reliable on HF Spaces)
         # HF Spaces has 16GB RAM, so this is perfectly fine!
-        else:
+        if True: # FORCE LOCAL MODE
             print(f"Loading local embedding model: {model_name}")
             print("WARN: This uses significant RAM and may crash on free hosting tiers.")
             # Lazy import to save memory if using API
