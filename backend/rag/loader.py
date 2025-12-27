@@ -45,9 +45,14 @@ class PDFLoader:
                     
                     # Only include pages with actual text
                     if text and text.strip():
+                        # Basic cleaning: Remove repeated newlines and normalize spaces
+                        # This helps with "broken words" often caused by PDF double-spacing or layout issues
+                        clean_text = text.replace('\n', ' ').replace('\r', '').replace('  ', ' ')
+                        clean_text = ' '.join(clean_text.split())
+                        
                         pages_text.append({
                             "page": page_num,
-                            "text": text.strip()
+                            "text": clean_text
                         })
                         print(f"  [OK] Page {page_num}/{total_pages} - {len(text)} chars")
                     else:
