@@ -60,6 +60,21 @@ export const resetIndex = async () => {
 };
 
 /**
+ * Get all uploaded documents history
+ */
+export const getDocuments = async () => {
+    const response = await api.get('/documents');
+    return response.data;
+};
+
+/**
+ * Delete a document from history
+ */
+export const deleteDocument = async (docId) => {
+    await api.delete(`/documents/${docId}`);
+};
+
+/**
  * Health check
  */
 export const healthCheck = async () => {

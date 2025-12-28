@@ -1,5 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { uploadDocument } from '../services/api';
+import { UploadCloud, FileText, CheckCircle, Shield, Layers, Eye } from 'lucide-react';
 
 export default function Upload({ onUploadComplete }) {
     const [isDragging, setIsDragging] = useState(false);
@@ -78,107 +79,121 @@ export default function Upload({ onUploadComplete }) {
     };
 
     return (
-        <div className="w-full max-w-xl px-4 md:px-0">
-            <div className="text-center mb-10 space-y-3">
-                <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight text-white font-display">
-                    DOC-GPT
-                </h1>
-                <p className="text-slate-400 text-sm md:text-lg">
-                    Premium Document Intelligence & Q&A
-                </p>
-                <div className="flex flex-wrap items-center justify-center gap-2 md:gap-4 pt-2">
-                    <span className="text-[8px] md:text-[10px] font-bold tracking-widest uppercase px-2 md:px-3 py-1 bg-white/5 border border-white/10 rounded text-slate-500">
-                        Secure AI Retrieval
-                    </span>
-                    <span className="text-[8px] md:text-[10px] font-bold tracking-widest uppercase px-2 md:px-3 py-1 bg-white/5 border border-white/10 rounded text-slate-500">
-                        Encrypted Analysis
-                    </span>
-                </div>
-            </div>
+        <div className="w-full h-full flex items-center justify-center px-4">
 
             {!isUploading ? (
-                <div
-                    onDragOver={handleDragOver}
-                    onDragLeave={handleDragLeave}
-                    onDrop={handleDrop}
-                    className={`
-                        relative group p-8 md:p-12 rounded-2xl border-2 border-dashed 
-                        transition-all duration-300 cursor-pointer
-                        ${isDragging
-                            ? 'border-blue-500 bg-blue-500/5 shadow-2xl shadow-blue-500/10'
-                            : 'border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/[0.07]'}
-                    `}
-                >
-                    <input
-                        type="file"
-                        accept="application/pdf"
-                        onChange={handleFileInput}
-                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                    />
+                <div className="w-full max-w-2xl text-center">
+                    {/* Header */}
+                    <div className="mb-8">
+                        <h1 className="text-5xl md:text-6xl font-bold mb-4">
+                            <span className="bg-gradient-to-r from-purple-500 via-blue-500 to-cyan-400 bg-clip-text text-transparent">DOC-GPT</span>
+                        </h1>
+                        <p className="text-slate-400 text-lg mb-6">Premium Document Intelligence & Q&A</p>
 
-                    <div className="text-center space-y-6 pointer-events-none">
-                        <div className="w-16 h-16 md:w-20 md:h-20 mx-auto rounded-3xl bg-blue-600/10 border border-blue-500/20 flex items-center justify-center group-hover:scale-110 transition-transform duration-500">
-                            <svg className="w-8 h-8 md:w-10 md:h-10 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                            </svg>
-                        </div>
-
-                        <div className="space-y-2 px-2">
-                            <h3 className="text-lg md:text-xl font-bold text-white leading-tight">
-                                {isDragging ? 'Drop to start analysis' : 'Upload Document'}
-                            </h3>
-                            <p className="text-slate-400 text-xs md:text-sm">
-                                Drag and drop your PDF here, or click to browse
-                            </p>
-                        </div>
-
-                        <div className="text-[10px] md:text-[11px] text-slate-600 font-medium">
-                            Only PDF files are supported for semantic analysis.
+                        {/* Badges */}
+                        <div className="flex items-center justify-center gap-3 mb-12">
+                            <span className="px-4 py-1.5 bg-purple-500/10 border border-purple-500/30 rounded-full text-xs font-medium text-purple-400 uppercase tracking-wider">
+                                Secure AI Retrieval
+                            </span>
+                            <span className="px-4 py-1.5 bg-blue-500/10 border border-blue-500/30 rounded-full text-xs font-medium text-blue-400 uppercase tracking-wider">
+                                Encrypted Analysis
+                            </span>
                         </div>
                     </div>
+
+                    {/* Upload Area */}
+                    <div
+                        onDragOver={handleDragOver}
+                        onDragLeave={handleDragLeave}
+                        onDrop={handleDrop}
+                        className={`
+                        relative group p-16 rounded-2xl border-2 border-dashed 
+                        transition-all duration-300 cursor-pointer
+                        ${isDragging
+                                ? 'border-purple-500 bg-purple-500/5 shadow-2xl shadow-purple-500/10 scale-[1.02]'
+                                : 'border-white/10 bg-[#1a1d23]/50 hover:border-purple-500/30 hover:bg-[#1a1d23]'}
+                    `}
+                    >
+                        <input
+                            type="file"
+                            accept="application/pdf"
+                            onChange={handleFileInput}
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                        />
+
+                        <div className="text-center space-y-6 pointer-events-none">
+                            {/* Icon */}
+                            <div className="flex justify-center mb-6">
+                                <div className="w-16 h-16 rounded-2xl bg-purple-600/10 border border-purple-500/20 flex items-center justify-center">
+                                    <UploadCloud size={32} className="text-purple-500" />
+                                </div>
+                            </div>
+
+                            {/* Text */}
+                            <div>
+                                <h3 className="text-xl font-bold text-white mb-2">Upload Document</h3>
+                                <p className="text-slate-400 text-sm mb-1">Drag and drop your PDF here, or click to browse</p>
+                                <p className="text-slate-600 text-xs">Only PDF files are supported for semantic analysis.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {error && (
+                        <div className="mt-6 p-4 bg-red-500/10 border border-red-500/20 rounded-xl animate-in slide-in-from-top-2 duration-300">
+                            <p className="text-red-400 text-center text-sm font-medium">{error}</p>
+                        </div>
+                    )}
                 </div>
             ) : (
-                <div className="p-6 md:p-10 rounded-2xl bg-white/5 border border-white/10 space-y-8 animate-in fade-in duration-500">
-                    <div className="text-center space-y-2">
+                <div className="w-full max-w-xl p-8 rounded-2xl bg-[#1a1d23] border border-white/10 space-y-8 animate-in fade-in duration-500">
+                    <div className="text-center space-y-4">
+                        {/* Visual Steps */}
+                        <div className="flex justify-between items-center px-4 mb-8">
+                            {['Upload', 'Chunking', 'Embeddings', 'Indexed'].map((step, i) => {
+                                const stepIdx = i + 1;
+                                // Simple logic to determine if step is active or done based on progress
+                                let status = 'pending';
+                                if (stepIdx === 1) status = 'done';
+                                if (stepIdx === 2 && uploadProgress >= 50) status = 'done';
+                                else if (stepIdx === 2 && uploadProgress > 0) status = 'active';
+
+                                if (stepIdx === 3 && uploadProgress >= 75) status = 'done';
+                                else if (stepIdx === 3 && uploadProgress >= 50) status = 'active';
+
+                                if (stepIdx === 4 && uploadProgress >= 100) status = 'done';
+                                else if (stepIdx === 4 && uploadProgress >= 90) status = 'active';
+
+                                return (
+                                    <div key={step} className="flex flex-col items-center gap-2">
+                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all ${status === 'done' ? 'bg-purple-600 border-purple-600 text-white' :
+                                            status === 'active' ? 'bg-purple-600/20 border-purple-500 text-purple-400 animate-pulse' :
+                                                'bg-transparent border-white/10 text-slate-500'
+                                            }`}>
+                                            {status === 'done' ? <CheckCircle size={16} /> :
+                                                stepIdx === 1 ? <UploadCloud size={16} /> :
+                                                    stepIdx === 2 ? <Layers size={16} /> :
+                                                        stepIdx === 3 ? <FileText size={16} /> :
+                                                            <CheckCircle size={16} />
+                                            }
+                                        </div>
+                                        <span className={`text-[10px] font-bold uppercase tracking-wider ${status !== 'pending' ? 'text-white' : 'text-slate-600'
+                                            }`}>{step}</span>
+                                    </div>
+                                )
+                            })}
+                        </div>
+
                         <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden">
                             <div
-                                className="h-full bg-blue-500 transition-all duration-500 ease-out"
+                                className="h-full bg-gradient-to-r from-purple-600 to-blue-600 transition-all duration-500 ease-out"
                                 style={{ width: `${uploadProgress}%` }}
                             />
                         </div>
-                        <div className="flex items-center justify-between text-[10px] md:text-xs font-bold text-slate-500 uppercase tracking-widest pt-2">
+                        <div className="flex items-center justify-between text-xs font-bold text-slate-500 uppercase tracking-widest pt-2">
                             <span className="truncate pr-4">{uploadStage}</span>
-                            <span className="text-blue-500 shrink-0">{uploadProgress}%</span>
+                            <span className="text-purple-500 shrink-0">{uploadProgress}%</span>
                         </div>
                     </div>
-
-                    <div className="grid grid-cols-1 gap-2">
-                        {[
-                            { id: 1, label: 'Document Verification', threshold: 30 },
-                            { id: 2, label: 'Semantic Chunking', threshold: 50 },
-                            { id: 3, label: 'Embedding Generation', threshold: 75 },
-                            { id: 4, label: 'Index Optimization', threshold: 100 }
-                        ].map((step) => (
-                            <div key={step.id} className="flex items-center justify-between p-3 rounded-lg bg-black/20 border border-white/5">
-                                <span className={`text-[10px] md:text-xs font-medium ${uploadProgress >= step.threshold ? 'text-white' : 'text-slate-600'}`}>
-                                    {step.label}
-                                </span>
-                                {uploadProgress >= step.threshold ? (
-                                    <svg className="w-3 h-3 md:w-4 md:h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                                    </svg>
-                                ) : (
-                                    <div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-slate-800 animate-pulse" />
-                                )}
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
-
-            {error && (
-                <div className="mt-6 p-4 bg-red-500/10 border border-red-500/20 rounded-xl animate-in slide-in-from-top-2 duration-300">
-                    <p className="red-400 text-center text-xs md:text-sm font-medium">{error}</p>
                 </div>
             )}
         </div>

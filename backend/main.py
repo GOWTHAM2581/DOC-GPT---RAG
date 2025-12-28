@@ -17,12 +17,28 @@ from rag.chunker import TextChunker
 from rag.embedder import EmbeddingGenerator
 from rag.vector_store import VectorStore
 from rag.qa import QuestionAnswerer
+import uuid
 
 from contextlib import asynccontextmanager
 
 # Global components (Singleton pattern to prevent OOM)
 global_embedder = None
 global_vector_store = None
+DOCUMENTS_REGISTRY = [] # In-memory registry
+REGISTRY_FILE = os.path.join(os.path.dirname(__file__), "data", "registry.json")
+
+def load_registry():
+    global DOCUMENTS_REGISTRY
+    if os.path.exists(REGISTRY_FILE):
+        try:
+            with open(REGISTRY_FILE, "r") as f:
+                DOCUMENTS_REGISTRY = json.load(f)
+        except:
+            DOCUMENTS_REGISTRY = []
+
+def save_registry():
+    with open(REGISTRY_FILE, "w") as f:
+        json.dump(DOCUMENTS_REGISTRY, f, indent=2)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -53,10 +69,18 @@ async def lifespan(app: FastAPI):
                  try:
                     global_vector_store.load_index(os.path.join(DATA_DIR, "vectors.index"))
                     indexing_state["is_indexed"] = True
+                    # Try to restore last state from registry if available
+                    if DOCUMENTS_REGISTRY:
+                        last_doc = DOCUMENTS_REGISTRY[-1]
+                        indexing_state["document_name"] = last_doc["name"]
+                        indexing_state["indexed_at"] = last_doc["upload_date"]
+                        indexing_state["total_chunks"] = last_doc["chunk_count"]
+                    
                     print("✅ Loaded existing FAISS index from disk")
                  except:
                     print("⚠️ Failed to load existing index")
-                    
+        
+        load_registry()
         print("✅ Startup complete")
     except Exception as e:
         print(f"❌ Startup Error: {e}")
@@ -154,6 +178,8 @@ async def upload_document(file: UploadFile = File(...)):
         with open(upload_path, "wb") as buffer:
             content = await file.read()
             buffer.write(content)
+            
+        file_size = len(content)
         
         print(f"File saved: {file.filename}")
         
@@ -237,6 +263,37 @@ async def upload_document(file: UploadFile = File(...)):
         indexing_state["total_chunks"] = len(chunks_data)
         indexing_state["suggestions"] = suggestions # Store in memory
         
+        # Add to Registry
+        new_doc_id = str(uuid.uuid4())
+        doc_entry = {
+            "id": new_doc_id,
+            "document_id": new_doc_id, # Alias for strict compliance
+            "name": file.filename,
+            "original_filename": file.filename,
+            "upload_date": indexing_state["indexed_at"],
+            "upload_timestamp": indexing_state["indexed_at"], # ISO format
+            "chunk_count": len(chunks_data),
+            "total_chunks": len(chunks_data),
+            "page_count": len(pages_text),
+            "total_pages": len(pages_text),
+            "file_size": file_size,
+            "embedding_backend": "pgvector" if global_vector_store.use_supabase else "faiss",
+            "status": "indexed" # Strict requirements say "indexed" or "failed"
+        }
+        
+        # Mark others as inactive (optional, since we only support one active for now)
+        for d in DOCUMENTS_REGISTRY:
+            d["status"] = "indexed"
+            
+        DOCUMENTS_REGISTRY.append(doc_entry)
+        try:
+            save_registry()
+        except Exception as e:
+            # "Fail loudly if registry write fails"
+            # Rollback memory change
+            DOCUMENTS_REGISTRY.pop()
+            raise HTTPException(status_code=500, detail=f"Critical Registry Error: Failed to save metadata. {str(e)}")
+        
         return UploadResponse(
             status="success",
             message=f"Successfully indexed {file.filename}",
@@ -247,7 +304,12 @@ async def upload_document(file: UploadFile = File(...)):
         
     except Exception as e:
         print(f"Error during upload: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+@app.post("/documents/upload", response_model=UploadResponse)
+async def upload_document_alias(file: UploadFile = File(...)):
+    """
+    Alias for /upload to meet strict API specs
+    """
+    return await upload_document(file)
 
 
 @app.post("/ask", response_model=AskResponse)
@@ -347,6 +409,31 @@ async def reset_index():
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Reset failed: {str(e)}")
+
+
+@app.get("/documents")
+async def get_documents():
+    """
+    Get list of all uploaded documents
+    """
+    return DOCUMENTS_REGISTRY
+
+@app.delete("/documents/{doc_id}")
+async def delete_document(doc_id: str):
+    """
+    Delete a document from registry
+    """
+    global DOCUMENTS_REGISTRY
+    
+    # Remove from list
+    initial_len = len(DOCUMENTS_REGISTRY)
+    DOCUMENTS_REGISTRY = [d for d in DOCUMENTS_REGISTRY if d["id"] != doc_id]
+    
+    if len(DOCUMENTS_REGISTRY) < initial_len:
+        save_registry()
+        return {"status": "success", "message": "Document removed from history"}
+    
+    raise HTTPException(status_code=404, detail="Document not found")
 
 
 if __name__ == "__main__":

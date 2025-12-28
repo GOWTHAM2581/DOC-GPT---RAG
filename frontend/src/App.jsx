@@ -1,61 +1,99 @@
 import React, { useState, useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate, Outlet, useOutletContext } from 'react-router-dom';
+import { useAuth, SignedIn } from "@clerk/clerk-react";
 import Upload from './components/Upload';
 import Chat from './components/Chat';
+import Sidebar from './components/Sidebar';
+import DocumentManagement from './pages/DocumentManagement';
+import Landing from './pages/Landing';
+import { Header } from './components/Header';
 import { getStatus, resetIndex } from './services/api';
 import './index.css';
-import {
-    SignedIn,
-    SignedOut,
-    SignInButton,
-    SignUpButton,
-    UserButton,
-} from "@clerk/clerk-react";
 
-function App() {
-    const [appState, setAppState] = useState('loading');
+// Layout for Authenticated Pages that use Sidebar
+const DashboardLayout = () => {
+    const context = useOutletContext();
+    const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth > 768);
+
+    const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
+
+    return (
+        <div className="flex min-h-screen bg-[#0f1115]">
+            {/* Mobile Overlay */}
+            {isSidebarOpen && (
+                <div
+                    className="fixed inset-0 bg-black/60 z-30 md:hidden backdrop-blur-sm"
+                    onClick={() => setIsSidebarOpen(false)}
+                />
+            )}
+
+            <Sidebar isOpen={isSidebarOpen} toggle={toggleSidebar} />
+
+            <main className={`flex-1 min-h-screen bg-[#0f1115] text-white overflow-hidden relative transition-all duration-300 ${isSidebarOpen ? 'md:ml-64' : 'ml-0'}`}>
+                <Outlet context={{ ...context, isSidebarOpen, toggleSidebar }} />
+            </main>
+        </div>
+    );
+};
+
+// Layout for Upload Page (Full screen with Header)
+const UploadLayout = ({ onReset }) => {
+    return (
+        <div className="min-h-screen bg-[#0f1115] text-white pt-16">
+            <Header onReset={onReset} />
+            <Outlet />
+        </div>
+    );
+};
+
+const AppContent = () => {
+    const { isSignedIn, isLoaded } = useAuth();
     const [documentInfo, setDocumentInfo] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const navigate = useNavigate();
+    const location = useLocation();
 
     useEffect(() => {
-        checkStatus();
-    }, []);
-
-    const checkStatus = async () => {
-        try {
-            const status = await getStatus();
-            if (status.is_indexed) {
-                setDocumentInfo(status);
-                setAppState('chat');
-            } else {
-                setAppState('upload');
+        const init = async () => {
+            if (isSignedIn) {
+                try {
+                    const status = await getStatus();
+                    if (status.is_indexed) {
+                        setDocumentInfo(status);
+                    } else {
+                        setDocumentInfo(null);
+                    }
+                } catch (error) {
+                    console.error("Status check failed", error);
+                    // If error, maybe assume not indexed or stay loading?
+                    // Safe to assume not indexed for now if API fails (e.g. 404)
+                    setDocumentInfo(null);
+                }
             }
-        } catch (error) {
-            console.error('Failed to check status:', error);
-            setAppState('upload');
+            setLoading(false);
+        };
+        if (isLoaded) {
+            init();
         }
-    };
+    }, [isLoaded, isSignedIn]);
 
-    const handleUploadComplete = (response) => {
-        setDocumentInfo({
-            is_indexed: true,
-            document_name: response.document_name,
-            indexed_at: new Date().toISOString(),
-            total_chunks: response.chunks_created,
-            suggestions: response.suggestions || []
-        });
-        setAppState('chat');
-    };
+    useEffect(() => {
+        if (!loading && isSignedIn) {
+            // Enforce flow: Index? -> Chat/Docs. No Index? -> Upload.
 
-    const handleReset = async () => {
-        try {
-            await resetIndex();
-            setDocumentInfo(null);
-            setAppState('upload');
-        } catch (error) {
-            console.error('Failed to reset:', error);
+            // If trying to access chat/docs but no index, go to upload
+            if (!documentInfo?.is_indexed && (location.pathname.startsWith('/chat') || location.pathname.startsWith('/documents'))) {
+                navigate('/upload');
+            }
+
+            // If trying to access upload but index exists, go to chat (unless explicitly resetting, but reset clears index first)
+            if (documentInfo?.is_indexed && location.pathname === '/upload') {
+                navigate('/chat');
+            }
         }
-    };
+    }, [loading, isSignedIn, documentInfo, location.pathname, navigate]);
 
-    if (appState === 'loading') {
+    if (!isLoaded || loading) {
         return (
             <div className="flex flex-col items-center justify-center min-h-screen bg-[#0f1115]">
                 <div className="w-12 h-12 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin mb-4" />
@@ -64,95 +102,67 @@ function App() {
         );
     }
 
+    const handleUploadComplete = (response) => {
+        const newInfo = {
+            is_indexed: true,
+            document_name: response.document_name,
+            indexed_at: new Date().toISOString(),
+            total_chunks: response.chunks_created,
+            suggestions: response.suggestions || []
+        };
+        setDocumentInfo(newInfo);
+        navigate('/chat');
+    };
+
+    const handleReset = async () => {
+        try {
+            await resetIndex();
+            setDocumentInfo(null);
+            navigate('/upload');
+        } catch (error) {
+            console.error('Reset failed:', error);
+        }
+    };
+
     return (
-        <div className="min-h-screen bg-[#0f1115] text-white">
-            <header className="fixed top-0 left-0 right-0 h-16 border-b border-white/10 glass z-50 px-4 md:px-6 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center font-bold text-white shadow-lg shadow-blue-600/20">
-                        D
+        <Routes>
+            <Route path="/" element={
+                isSignedIn ? <Navigate to={documentInfo?.is_indexed ? "/chat" : "/upload"} /> :
+                    <div className="min-h-screen bg-[#0f1115] text-white">
+                        <Header />
+                        <main className="pt-16"><Landing /></main>
                     </div>
-                    <h1 className="text-lg md:text-xl font-bold tracking-tight">DOC-GPT</h1>
-                </div>
+            } />
 
-                <div className="flex items-center gap-4">
-                    {appState === 'chat' && (
-                        <SignedIn>
-                            <button
-                                onClick={handleReset}
-                                className="btn-ghost px-3 py-1.5 md:px-4 md:py-2 text-[10px] md:text-sm flex items-center gap-2"
-                            >
-                                <span>New Analysis</span>
-                            </button>
-                        </SignedIn>
-                    )}
+            <Route element={<SignedIn><UploadLayout onReset={handleReset} /></SignedIn>}>
+                <Route path="/upload" element={<div className="flex items-center justify-center min-h-[calc(100vh-64px)] p-4 md:p-6"><Upload onUploadComplete={handleUploadComplete} /></div>} />
+            </Route>
 
-                    <SignedOut>
-                        <div className="flex items-center gap-2">
-                            <SignInButton mode="modal">
-                                <button className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-semibold transition-all">
-                                    Sign In
-                                </button>
-                            </SignInButton>
-                            <SignUpButton mode="modal">
-                                <button className="px-4 py-2 border border-white/10 hover:bg-white/5 rounded-lg text-sm font-semibold transition-all">
-                                    Sign Up
-                                </button>
-                            </SignUpButton>
-                        </div>
-                    </SignedOut>
-                    <SignedIn>
-                        <UserButton afterSignOutUrl="/" />
-                    </SignedIn>
-                </div>
-            </header>
-
-            <main className="pt-16">
-                <SignedOut>
-                    <div className="flex flex-col items-center justify-center min-h-[calc(100vh-64px)] p-4 text-center">
-                        <div className="max-w-2xl">
-                            <h2 className="text-4xl md:text-6xl font-extrabold mb-6 bg-gradient-to-r from-blue-400 to-indigo-500 bg-clip-text text-transparent">
-                                Intelligent Document Intelligence
-                            </h2>
-                            <p className="text-slate-400 text-lg md:text-xl mb-8 leading-relaxed">
-                                Experience the future of RAG. Upload, analyze, and chat with your documents using state-of-the-art AI.
-                            </p>
-                            <div className="flex flex-wrap justify-center gap-4">
-                                <SignInButton mode="modal">
-                                    <button className="px-8 py-4 bg-blue-600 hover:bg-blue-700 rounded-xl text-lg font-bold shadow-xl shadow-blue-600/30 transition-all transform hover:scale-105">
-                                        Get Started Now
-                                    </button>
-                                </SignInButton>
-                            </div>
-                        </div>
-                    </div>
-                </SignedOut>
-
-                <SignedIn>
-                    {appState === 'upload' ? (
-                        <div className="flex items-center justify-center min-h-[calc(100vh-64px)] p-4 md:p-6">
-                            <Upload onUploadComplete={handleUploadComplete} />
-                        </div>
-                    ) : (
+            {/* Dashboard Layout wrapper passes context to Outlet via its own Context Provider or just direct Outlet context */}
+            <Route element={<SignedIn><Outlet context={{ documentInfo, onReset: handleReset }} /></SignedIn>}>
+                <Route element={<DashboardLayout />}>
+                    <Route path="/chat" element={
                         <Chat
                             documentName={documentInfo?.document_name || 'Document'}
                             totalChunks={documentInfo?.total_chunks || 0}
                             suggestions={documentInfo?.suggestions}
                             onReset={handleReset}
                         />
-                    )}
-                </SignedIn>
-            </main>
+                    } />
+                    <Route path="/documents" element={<DocumentManagement />} />
+                </Route>
+            </Route>
 
-            {/* Footer status - Hidden on mobile to prevent chat occlusion */}
-            <div className="fixed bottom-4 right-4 z-50 hidden md:block">
-                <SignedIn>
-                    <div className="flex items-center gap-2 px-3 py-1.5 bg-green-500/10 border border-green-500/20 rounded-full text-[10px] font-bold text-green-400 uppercase tracking-widest">
-                        <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
-                        System Latency: Optimal
-                    </div>
-                </SignedIn>
-            </div>
-        </div>
+            <Route path="*" element={<Navigate to="/" />} />
+        </Routes>
+    );
+};
+
+function App() {
+    return (
+        <BrowserRouter>
+            <AppContent />
+        </BrowserRouter>
     );
 }
 
