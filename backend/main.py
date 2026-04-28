@@ -302,8 +302,13 @@ async def upload_document(file: UploadFile = File(...)):
             suggestions=suggestions
         )
         
+    except HTTPException:
+        # Re-raise HTTP exceptions (like file type validation)
+        raise
     except Exception as e:
-        print(f"Error during upload: {str(e)}")
+        error_msg = f"Error during document processing: {str(e)}"
+        print(error_msg)
+        raise HTTPException(status_code=500, detail=error_msg)
 @app.post("/documents/upload", response_model=UploadResponse)
 async def upload_document_alias(file: UploadFile = File(...)):
     """

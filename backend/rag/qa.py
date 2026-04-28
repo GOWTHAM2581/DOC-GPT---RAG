@@ -68,7 +68,6 @@ class QuestionAnswerer:
     # -------------------------------
     def answer_question(self, question: str, history: List[Dict] = []) -> Dict:
         # Step 0: Context Aware Query Condensing
-        # If the question is a follow-up (short), condense it into a standalone query
         search_query = question
         if history and len(question.split()) < 5:
             search_query = self._condense_question(question, history)
@@ -84,7 +83,6 @@ class QuestionAnswerer:
         context_chunks = []
         for score, item in zip(scores, indices):
             if isinstance(item, int):
-                # FAISS: item is an index into self.chunks_data
                 if item < len(self.chunks_data):
                     chunk = self.chunks_data[item]
                     context_chunks.append({
@@ -93,7 +91,6 @@ class QuestionAnswerer:
                         "score": float(score),
                     })
             else:
-                # Supabase: item is the chunk object itself
                 context_chunks.append({
                     "text": item.get("content") or item.get("text", ""),
                     "page": item.get("metadata", {}).get("page", 0) if "metadata" in item else item.get("page", 0),
@@ -102,26 +99,67 @@ class QuestionAnswerer:
 
         confidence_score = max(scores)
 
-        # Step 3: Answer generation
+        # Step 3: Question Summary
+        # We generate a summary of what the user is asking to acknowledge the intent
+        question_summary = self._summarize_user_question(question)
+        
+        # Step 4: Answer generation (LLM or Fallback)
         if self.use_llm:
-            # We pass the original question for the answer, or the condensed one?
-            # Usually original is better for the conversational feel, 
-            # but search_query is better for context.
             if self.llm_type == "openai":
-                answer = self._generate_openai_answer(question, context_chunks)
+                llm_answer = self._generate_openai_answer(question, context_chunks)
             elif self.llm_type == "groq":
-                answer = self._generate_llm_answer(question, context_chunks)
+                llm_answer = self._generate_llm_answer(question, context_chunks)
             else:
-                answer = self._generate_fallback_answer(context_chunks)
+                llm_answer = None
         else:
-            answer = self._generate_fallback_answer(context_chunks)
+            llm_answer = None
+
+        # Step 5: Format the final response string as requested
+        # Format: [Summary] + [LLM Answer if any] + [Excerpts]
+        
+        final_answer = f"### Question Summary\n{question_summary}\n\n"
+        
+        if llm_answer and "No relevant information found" not in llm_answer:
+            final_answer += f"### Answer\n{llm_answer}\n\n"
+        
+        final_answer += "### Top Matched Pages (Excerpts)\n\n"
+        for i, chunk in enumerate(context_chunks, 1):
+            # Clean up text for readability
+            clean_text = chunk['text'].replace('\n', ' ').strip()
+            # Truncate if too long for the summary view? No, let's show the block
+            final_answer += f"**{i}. Page {chunk['page']}**\n{clean_text}\n\n"
 
         return {
-            "answer": answer,
+            "answer": final_answer,
             "has_relevant_data": True,
             "confidence_score": confidence_score,
             "source_chunks": context_chunks,
         }
+
+    def _summarize_user_question(self, question: str) -> str:
+        """Generates a concise summary of the user's question."""
+        if not self.use_llm:
+            return f"Analyzing your request about: '{question}'"
+
+        prompt = f"Summarize what the user is asking in one short, professional sentence (starting with 'You are asking about...'):\n\nQuestion: {question}"
+        
+        try:
+            if self.llm_type == "openai":
+                response = self.client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0,
+                    max_tokens=50
+                )
+                return response.choices[0].message.content.strip()
+            elif self.llm_type == "groq":
+                response = self.llm.invoke([{"role": "user", "content": prompt}])
+                return response.content.strip()
+        except Exception as e:
+            print(f"Summary generation failed: {e}")
+            return f"You are asking about: {question}"
+        
+        return f"You are asking about: {question}"
 
     # -------------------------------
     # QUERY CONDENSING (MEMORY)
