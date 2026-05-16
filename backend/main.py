@@ -4,15 +4,15 @@ Author: Senior Full-Stack AI Engineer
 Purpose: Production-ready RAG API with anti-hallucination guardrails
 """
 
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List, Dict
 import os
 import json
 from datetime import datetime
 
-from rag.loader import PDFLoader
+from rag.loader import PDFLoader, CSVLoader
 from rag.chunker import TextChunker
 from rag.embedder import EmbeddingGenerator
 from rag.vector_store import VectorStore
@@ -52,35 +52,18 @@ async def lifespan(app: FastAPI):
         global_vector_store = VectorStore(global_embedder)
         
         # Determine initial indexing state
-        if global_vector_store.use_supabase:
-            # Check if we have data in Supabase (simple check)
-            try:
-                res = global_vector_store.supabase.table("documents").select("id", count="exact").limit(1).execute()
-                count = res.count
-                if count and count > 0:
-                    indexing_state["is_indexed"] = True
-                    indexing_state["total_chunks"] = count
-                    print(f"✅ Detected {count} existing chunks in Supabase")
-            except Exception as e:
-                print(f"⚠️ Could not check Supabase status: {e}")
+        if global_vector_store.use_pinecone:
+            indexing_state["is_indexed"] = True # For Pinecone, we assume it's ready or at least initialized
+            load_registry()
+            if DOCUMENTS_REGISTRY:
+                last_doc = DOCUMENTS_REGISTRY[-1]
+                indexing_state["document_name"] = last_doc["name"]
+                indexing_state["indexed_at"] = last_doc["upload_date"]
+                indexing_state["total_chunks"] = last_doc["total_chunks"]
+            print(f"✅ Connected to Pinecone Index: {global_vector_store.index_name}")
         else:
-            # Check local files
-            if os.path.exists(os.path.join(DATA_DIR, "vectors.index")):
-                 try:
-                    global_vector_store.load_index(os.path.join(DATA_DIR, "vectors.index"))
-                    indexing_state["is_indexed"] = True
-                    # Try to restore last state from registry if available
-                    if DOCUMENTS_REGISTRY:
-                        last_doc = DOCUMENTS_REGISTRY[-1]
-                        indexing_state["document_name"] = last_doc["name"]
-                        indexing_state["indexed_at"] = last_doc["upload_date"]
-                        indexing_state["total_chunks"] = last_doc["chunk_count"]
-                    
-                    print("✅ Loaded existing FAISS index from disk")
-                 except:
-                    print("⚠️ Failed to load existing index")
+            print("⚠️ Pinecone not enabled or failed to connect.")
         
-        load_registry()
         print("✅ Startup complete")
     except Exception as e:
         print(f"❌ Startup Error: {e}")
@@ -135,8 +118,11 @@ indexing_state = {
 
 # Request/Response models updated
 class AskRequest(BaseModel):
-    question: str
+    question: Optional[str] = None
+    message: Optional[str] = None # Support 'message' from frontend
     history: Optional[list] = []
+    currentUrl: Optional[str] = "default"
+    sessionId: Optional[str] = None
 
 
 class AskResponse(BaseModel):
@@ -161,89 +147,98 @@ class StatusResponse(BaseModel):
     total_chunks: int
     suggestions: Optional[list] = []
 
-# ... [Keep existing code] ...
+@app.get("/status", response_model=StatusResponse)
+async def get_status():
+    """
+    Get current indexing status
+    """
+    return StatusResponse(**indexing_state)
 
 @app.post("/upload", response_model=UploadResponse)
-async def upload_document(file: UploadFile = File(...)):
+async def upload_document(file: UploadFile = File(...), currentUrl: str = Form("default")):
     """
-    Upload and index a PDF document
+    Upload and index a PDF or CSV document
     """
     try:
         # Validate file type
-        if not file.filename.endswith('.pdf'):
-            raise HTTPException(status_code=400, detail="Only PDF files are supported")
+        file_ext = os.path.splitext(file.filename)[1].lower()
+        if file_ext not in ['.pdf', '.csv']:
+            raise HTTPException(status_code=400, detail="Only PDF and CSV files are supported")
         
         # Step 1: Save uploaded file
-        upload_path = os.path.join(DATA_DIR, "uploaded_document.pdf")
+        upload_path = os.path.join(DATA_DIR, f"uploaded_document{file_ext}")
         with open(upload_path, "wb") as buffer:
             content = await file.read()
             buffer.write(content)
             
         file_size = len(content)
+        print(f"File saved: {file.filename} ({file_ext})")
         
-        print(f"File saved: {file.filename}")
-        
-        # Step 2: Extract text from PDF
-        loader = PDFLoader()
-        pages_text = loader.extract_text(upload_path)
-        
-        if not pages_text:
-            raise HTTPException(status_code=400, detail="Could not extract text from PDF")
-        
-        print(f"Extracted text from {len(pages_text)} pages")
-        
-        # --- Suggestion Generation Logic (Simple Heuristic for Free Tier) ---
+        chunks_data = []
         suggestions = []
-        try:
-            # 1. Gather potential headings from first few pages
-            potential_headings = []
-            for page in pages_text[:5]: # Check first 5 pages
-                lines = page['text'].split('\n')
-                for line in lines:
-                    line = line.strip()
-                    # Check for "Heading-like" properties: Short, casing, no period
-                    if 4 < len(line) < 50 and not line.endswith('.'):
-                        if line.isupper() or line.istitle():
-                            # Remove common junk
-                            if not any(x in line.lower() for x in ['page', 'copyright', 'www', 'http']):
-                                potential_headings.append(line)
+        total_pages = 0
+        
+        if file_ext == '.pdf':
+            # Step 2: Extract text from PDF
+            loader = PDFLoader()
+            pages_text = loader.extract_text(upload_path)
+            total_pages = len(pages_text)
             
-            # 2. Filter and create questions
-            unique_headings = sorted(list(set(potential_headings)), key=len, reverse=True)
+            if not pages_text:
+                raise HTTPException(status_code=400, detail="Could not extract text from PDF")
             
-            # Select top 3 interesting headings
-            selected_topics = unique_headings[:3]
+            # Step 3: Chunk with overlap
+            chunker = TextChunker(chunk_size=400, overlap=80)
+            chunks_data = chunker.create_chunks(pages_text)
             
-            if selected_topics:
-                 for topic in selected_topics:
-                     suggestions.append(f"Explain about {topic}")
-            else:
-                 # Fallback if no clean headings found
-                 suggestions = [
-                     f"Summarize the main points of {file.filename}",
-                     "What are the key technical requirements?",
-                     "List the important conclusions"
-                 ]
-                 
-            # Limit to 3
-            suggestions = suggestions[:3]
+            # Suggestion Generation Logic for PDFs
+            try:
+                potential_headings = []
+                for page in pages_text[:5]:
+                    lines = page['text'].split('\n')
+                    for line in lines:
+                        line = line.strip()
+                        if 4 < len(line) < 50 and not line.endswith('.'):
+                            if line.isupper() or line.istitle():
+                                if not any(x in line.lower() for x in ['page', 'copyright', 'www', 'http']):
+                                    potential_headings.append(line)
+                
+                unique_headings = sorted(list(set(potential_headings)), key=len, reverse=True)
+                selected_topics = unique_headings[:3]
+                
+                if selected_topics:
+                    for topic in selected_topics:
+                        suggestions.append(f"Explain about {topic}")
+            except:
+                pass
+                
+        else: # .csv
+            # Step 2: Extract text from CSV
+            loader = CSVLoader()
+            chunks_data = loader.extract_csv(upload_path)
+            total_pages = 1
             
-        except Exception as e:
-            print(f"Suggestion generation error: {e}")
-            suggestions = [f"Summarize {file.filename}", "Key takeaways"]
+            if not chunks_data:
+                raise HTTPException(status_code=400, detail="Could not extract data from CSV")
+            
+            # Suggestions for CSV
+            suggestions = [
+                "List all products",
+                "What is the most expensive item?",
+                "Give me a summary of these products"
+            ]
 
-        
-        # Step 3: Chunk with overlap
-        chunker = TextChunker(chunk_size=400, overlap=80)
-        chunks_data = chunker.create_chunks(pages_text)
-        
-        print(f"Created {len(chunks_data)} chunks")
+        if not suggestions:
+            suggestions = [f"Summarize {file.filename}", "Key takeaways"]
+            
+        suggestions = suggestions[:3]
+        print(f"Created {len(chunks_data)} chunks/rows")
         
         # Step 4 & 5: Vector Store
         if global_vector_store is None:
              raise HTTPException(status_code=500, detail="Vector Store not initialized")
              
-        global_vector_store.build_index(chunks_data)
+        global_vector_store.build_index(chunks_data, tenant_id=currentUrl)
         
         print(f"Generated embeddings and built index")
         
@@ -274,10 +269,10 @@ async def upload_document(file: UploadFile = File(...)):
             "upload_timestamp": indexing_state["indexed_at"], # ISO format
             "chunk_count": len(chunks_data),
             "total_chunks": len(chunks_data),
-            "page_count": len(pages_text),
-            "total_pages": len(pages_text),
+            "page_count": total_pages,
+            "total_pages": total_pages,
             "file_size": file_size,
-            "embedding_backend": "pgvector" if global_vector_store.use_supabase else "faiss",
+            "embedding_backend": "pinecone",
             "status": "indexed" # Strict requirements say "indexed" or "failed"
         }
         
@@ -318,6 +313,7 @@ async def upload_document_alias(file: UploadFile = File(...)):
 
 
 @app.post("/ask", response_model=AskResponse)
+@app.post("/chat", response_model=AskResponse)
 async def ask_question(request: AskRequest):
     """
     Answer questions using RAG with strict anti-hallucination guardrails
@@ -364,13 +360,20 @@ async def ask_question(request: AskRequest):
         )
 
         
+        # Handle both 'question' and 'message' (for frontend compatibility)
+        query = request.message or request.question
+        
+        if not query:
+            raise HTTPException(status_code=400, detail="Question or message is required")
+        
         # Get answer with anti-hallucination guardrails and history support
-        result = qa.answer_question(request.question, request.history)
+        # Pass currentUrl as tenant_id
+        result = qa.answer_question(query, request.history, tenant_id=request.currentUrl)
         
         # Log for debugging
-        print(f"Question: {request.question}")
-        print(f"Confidence: {result['confidence_score']:.3f}")
-        print(f"Has relevant data: {result['has_relevant_data']}")
+        print(f"Question: {query}")
+        print(f"Confidence: {result.get('confidence', 0.0):.3f}")
+        print(f"Has relevant data: {result.get('has_data', False)}")
         
         return AskResponse(
             answer=result["answer"],
@@ -444,7 +447,7 @@ async def delete_document(doc_id: str):
 if __name__ == "__main__":
     import uvicorn
     # Use PORT environment variable for Render deployment
-    port = int(os.getenv("PORT", 8000))
+    port = int(os.getenv("PORT", 9000))
     # Disable reload in production for better performance
     reload = os.getenv("ENVIRONMENT") == "development"
     uvicorn.run("main:app", host="0.0.0.0", port=port, reload=reload)

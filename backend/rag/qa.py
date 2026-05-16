@@ -16,7 +16,7 @@ class QuestionAnswerer:
         self,
         vector_store,
         chunks_data: List[Dict],
-        top_k: int = 3,
+        top_k: int = 15,
         use_llm: bool = True,
     ):
         self.vector_store = vector_store
@@ -48,12 +48,12 @@ class QuestionAnswerer:
                 from langchain_groq import ChatGroq
                 self.llm = ChatGroq(
                     groq_api_key=groq_api_key,
-                    model_name="llama3-8b-8192", # Correct model name for Groq
+                    model_name="llama-3.1-8b-instant", # Correct model name for Groq
                     temperature=0.1,
                     max_tokens=512,
                 )
                 self.llm_type = "groq"
-                print("Groq LLM initialized (llama-3.1-8b-instant)")
+                print("Groq LLM initialized (llama-3.1-8b-instant) [V2 - Consolidated]")
                 return
 
             print("No valid LLM keys found. LLM disabled.")
@@ -66,7 +66,7 @@ class QuestionAnswerer:
     # -------------------------------
     # MAIN Q&A PIPELINE
     # -------------------------------
-    def answer_question(self, question: str, history: List[Dict] = []) -> Dict:
+    def answer_question(self, question: str, history: List[Dict] = [], tenant_id: str = "default") -> Dict:
         # Step 0: Context Aware Query Condensing
         search_query = question
         if history and len(question.split()) < 5:
@@ -74,7 +74,7 @@ class QuestionAnswerer:
             print(f"Condensed Query: {search_query}")
 
         # Step 1: Vector search
-        scores, indices = self.vector_store.search(search_query, self.top_k)
+        scores, indices = self.vector_store.search(search_query, self.top_k, tenant_id=tenant_id)
 
         if not scores or len(indices) == 0:
             return self._no_data_response(0.0)
@@ -99,35 +99,28 @@ class QuestionAnswerer:
 
         confidence_score = max(scores)
 
-        # Step 3: Question Summary
-        # We generate a summary of what the user is asking to acknowledge the intent
-        question_summary = self._summarize_user_question(question)
-        
-        # Step 4: Answer generation (LLM or Fallback)
+        # Step 3: Answer generation (LLM or Fallback)
+        is_fallback = False
         if self.use_llm:
             if self.llm_type == "openai":
                 llm_answer = self._generate_openai_answer(question, context_chunks)
             elif self.llm_type == "groq":
                 llm_answer = self._generate_llm_answer(question, context_chunks)
             else:
-                llm_answer = None
+                llm_answer = self._generate_fallback_answer(context_chunks)
+                is_fallback = True
         else:
-            llm_answer = None
+            llm_answer = self._generate_fallback_answer(context_chunks)
+            is_fallback = True
 
-        # Step 5: Format the final response string as requested
-        # Format: [Summary] + [LLM Answer if any] + [Excerpts]
+        # Step 4: Format the final response
+        # Structure: Natural Answer ONLY (Metadata handled separately by frontend)
         
-        final_answer = f"### Question Summary\n{question_summary}\n\n"
-        
-        if llm_answer and "No relevant information found" not in llm_answer:
-            final_answer += f"### Answer\n{llm_answer}\n\n"
-        
-        final_answer += "### Top Matched Pages (Excerpts)\n\n"
-        for i, chunk in enumerate(context_chunks, 1):
-            # Clean up text for readability
-            clean_text = chunk['text'].replace('\n', ' ').strip()
-            # Truncate if too long for the summary view? No, let's show the block
-            final_answer += f"**{i}. Page {chunk['page']}**\n{clean_text}\n\n"
+        if is_fallback:
+            final_answer = "### Relevant Excerpts Found\n\n" + llm_answer
+        else:
+            # Clean conversational answer
+            final_answer = llm_answer
 
         return {
             "answer": final_answer,
@@ -139,7 +132,7 @@ class QuestionAnswerer:
     def _summarize_user_question(self, question: str) -> str:
         """Generates a concise summary of the user's question."""
         if not self.use_llm:
-            return f"Analyzing your request about: '{question}'"
+            return f"Analyzing your request regarding: '{question}'"
 
         prompt = f"Summarize what the user is asking in one short, professional sentence (starting with 'You are asking about...'):\n\nQuestion: {question}"
         
@@ -165,28 +158,20 @@ class QuestionAnswerer:
     # QUERY CONDENSING (MEMORY)
     # -------------------------------
     def _condense_question(self, question: str, history: List[Dict]) -> str:
-        """
-        Uses LLM to rewrite a short follow-up question into a standalone search query.
-        Example: "example" -> "Examples of eye-tracking technology in VR"
-        """
         if not self.use_llm:
             return question
 
-        # Format history for the prompt
         chat_context = ""
-        for msg in history[-3:]: # Look at last 3 messages
+        for msg in history[-3:]:
             role = "User" if msg.get("role") == "user" or msg.get("type") == "user" else "Assistant"
             content = msg.get("content", "")
             chat_context += f"{role}: {content}\n"
 
         prompt = f"""
-Given the following conversation history and a follow-up question, rewrite the follow-up question to be a standalone search query that can be used to search a document.
-
-Conversation History:
+Given the conversation history and follow-up, rewrite it as a standalone search query.
+History:
 {chat_context}
-
-Follow-up Question: {question}
-
+Follow-up: {question}
 Standalone Query:"""
 
         try:
@@ -199,11 +184,9 @@ Standalone Query:"""
                 )
                 return response.choices[0].message.content.strip()
             elif self.llm_type == "groq":
-                # Use a very fast model for condensing
                 response = self.llm.invoke([{"role": "user", "content": prompt}])
                 return response.content.strip()
         except Exception as e:
-            print(f"Condensing failed: {e}")
             return question
         
         return question
@@ -215,11 +198,8 @@ Standalone Query:"""
         self, question: str, context_chunks: List[Dict]
     ) -> str:
         context_text = "\n\n".join(
-            [
-                f"[Page {chunk['page']}]\n{chunk['text']}"
-                for chunk in context_chunks
-            ]
-        )
+            [chunk['text'] for chunk in context_chunks]
+        ).replace("_", " ")
 
         try:
             response = self.client.chat.completions.create(
@@ -228,23 +208,23 @@ Standalone Query:"""
                     {
                         "role": "system",
                         "content": (
-                            "You are a precise document-focused assistant. "
-                            "Answer strictly based on the provided context. "
-                            "Do NOT use external knowledge. Be direct and concise. "
-                            "Cite page numbers in brackets like [Page X]."
-                        )
+                            "You are a helpful and professional document-based assistant. "
+                            "CONSOLIDATE the information from the provided context into a coherent, "
+                            "easy-to-read answer. Summarize the key points like ChatGPT would. "
+                            "NEVER include page numbers, citations, brackets like [Page X], or technical field names like 'Product_ID' in your response. "
+                            "NEVER include underscores (_) in your response; convert technical keys like 'Total_Height' into natural spaces like 'Total Height'."
+                        ).replace("_", " ")
                     },
                     {
                         "role": "user",
-                        "content": f"Context:\n{context_text}\n\nQuestion: {question}\n\nAnswer:"
+                        "content": f"Context:\n{context_text}\n\nQuestion: {question}\n\nConsolidated Answer:"
                     }
                 ],
-                temperature=0,
-            )
-            return response.choices[0].message.content
+                temperature=0.3, # Slightly higher for better flow
+            ).choices[0].message.content
+            return response.replace("_", " ")
         except Exception as e:
-            print(f"OpenAI Error: {e}")
-            return self._generate_fallback_answer(context_chunks)
+            return self._generate_fallback_answer(context_chunks).replace("_", " ")
 
     # -------------------------------
     # GROQ ANSWER GENERATION
@@ -253,22 +233,23 @@ Standalone Query:"""
         self, question: str, context_chunks: List[Dict]
     ) -> str:
         context_text = "\n\n".join(
-            [
-                f"[Page {chunk['page']}]\n{chunk['text']}"
-                for chunk in context_chunks
-            ]
-        )
+            [chunk['text'] for chunk in context_chunks]
+        ).replace("_", " ")
 
         system_prompt = (
-            "You are a precise document-based Q&A assistant.\n"
-            "RULES:\n"
-            "1. Answer ONLY using the provided context. If the information is not there, say: 'No relevant information found in the document.'\n"
-            "2. Do NOT use external knowledge or provide conversational filler.\n"
-            "3. Provide ONLY the answer asked for. Be extremely direct.\n"
-            "4. Cite page numbers at the end of your answer in brackets like [Page X].\n"
+            "You are a highly analytical, helpful, and professional document-based assistant.\n"
+            "GOAL: Provide a comprehensive, accurate, and conversational answer based strictly on the provided context.\n"
+            "ANALYSIS RULES:\n"
+            "1. BE EXHAUSTIVE: If the user asks for 'available sizes' or 'list of items', scan ALL provided context chunks to find EVERY mention. Do not stop after the first few.\n"
+            "2. CONNECT THE DOTS: Compare data across different chunks to provide a consolidated and synthesized response.\n"
+            "3. STRICT CONTEXT: Only use the provided context. If not found, state 'I'm sorry, but I couldn't find information about that in the document.'\n"
+            "4. NO TECHNICAL NOISE: Do not include internal field names like 'Product_ID', 'Product_Label', or 'Metadata'. Replace any technical names with natural language. For example, if you see 'Total_Height_Of_Valve', convert it to 'Total Height of Valve'. NEVER include underscores (_) in your final response.\n"
+            "5. NO CITATIONS: NEVER include page numbers, brackets like [Page X], or any references to the source document in your final response. The user should not see any technical metadata or page counts.\n"
+            "6. Explain the reasoning clearly if the user asks 'why' or 'how'.\n"
+            "7. Maintain a helpful and supportive tone."
         )
 
-        user_prompt = f"Context:\n{context_text}\n\nQuestion: {question}\n\nAnswer strictly from context:"
+        user_prompt = f"Context:\n{context_text}\n\nQuestion: {question}\n\nAnswer:"
 
         try:
             response = self.llm.invoke(
@@ -277,7 +258,7 @@ Standalone Query:"""
                     {"role": "user", "content": user_prompt},
                 ]
             )
-            return response.content
+            return response.content.replace("_", " ")
 
         except Exception as e:
             print(f"Groq LLM error: {e}")
@@ -287,12 +268,10 @@ Standalone Query:"""
     # FALLBACK (NO LLM)
     # -------------------------------
     def _generate_fallback_answer(self, context_chunks: List[Dict]) -> str:
-        # User-friendly fallback - Plain text formatting
-        summary = "Relevant Excerpts Found:\n\n"
+        summary = ""
         for i, chunk in enumerate(context_chunks, 1):
-             text_preview = chunk['text'].replace('\n', ' ').strip()
-             summary += f"{i}. Page {chunk['page']}\n{text_preview}\n\n"
-        
+             text_preview = chunk['text'].replace('\n', ' ').strip()[:300] + "..."
+             summary += f"{i}. **Page {chunk['page']}**: {text_preview}\n"
         return summary
 
     # -------------------------------

@@ -1,143 +1,126 @@
 """
 Vector Store Module
-FAISS-based vector database for similarity search
+Production-ready Pinecone storage with multi-tenancy support (Namespaces)
 """
 
-import faiss
-import numpy as np
-from typing import List, Tuple
-import os
-
-
-
-import faiss
-import numpy as np
-from typing import List, Tuple, Dict
 import os
 import json
 import uuid
+import numpy as np
+from pinecone import Pinecone
+from typing import List, Tuple, Dict
 
 class VectorStore:
     """
     Hybrid Vector Database:
-    - Uses Supabase (pgvector) if credentials exist (Production)
-    - Falls back to FAISS (local file) if not (Development)
+    - Uses Pinecone as primary storage
+    - Supports multi-tenancy (Namespaces architecture)
     """
     
     def __init__(self, embedder):
         self.embedder = embedder
         self.dimension = embedder.embedding_dim
-        self.supabase = None
-        self.use_supabase = False
+        self.use_pinecone = False
+        self.index = None
         
-        # Check for Supabase credentials
-        supabase_url = os.getenv("SUPABASE_URL")
-        supabase_key = os.getenv("SUPABASE_SERVICE_KEY")
+        # Pinecone Connection Details
+        self.api_key = os.getenv("PINECONE_API_KEY")
+        self.index_name = os.getenv("PINECONE_INDEX_NAME")
         
-        if supabase_url and supabase_key:
+        if self.api_key and self.index_name:
             try:
-                from supabase import create_client
-                self.supabase = create_client(supabase_url, supabase_key)
-                self.use_supabase = True
-                print("Using Supabase (pgvector) for vector storage")
+                self._init_pinecone()
+                self.use_pinecone = True
+                print(f"✅ Successfully connected to Pinecone: {self.index_name}")
             except Exception as e:
-                print(f"Failed to initialize Supabase: {e}")
-        
-        # Initialize FAISS as fallback
-        if not self.use_supabase:
-            self.index = faiss.IndexFlatIP(self.dimension)
-            self.chunks = [] # Keep chunks in memory for FAISS
-            print("Using FAISS (local) for vector storage")
+                print(f"❌ Failed to connect to Pinecone: {e}")
+                print("⚠️ Vector storage is unavailable.")
+        else:
+            print("⚠️ Pinecone credentials missing in environment variables.")
 
-    def build_index(self, chunks: List[Dict]):
+    def _init_pinecone(self):
+        """Initialize Pinecone client and index"""
+        pc = Pinecone(api_key=self.api_key)
+        self.index = pc.Index(self.index_name)
+
+    def build_index(self, chunks: List[Dict], tenant_id: str = "default"):
         """
-        Index text chunks
-        Args:
-            chunks: List of dictionaries with 'text', 'page', etc.
+        Index text chunks into Pinecone using Namespaces
         """
+        if not self.use_pinecone:
+            print("⚠️ Pinecone not available. Cannot index.")
+            return
+
         texts = [c["text"] for c in chunks]
         embeddings = self.embedder.embed_texts(texts)
         
-        if self.use_supabase:
-            print(f"Uploading {len(chunks)} vectors to Supabase...")
+        print(f"🚀 Uploading {len(chunks)} vectors to Pinecone [{self.index_name}] in namespace [{tenant_id}]...")
+        
+        vectors = []
+        for i, chunk in enumerate(chunks):
+            # Clean metadata to avoid type errors in Pinecone (only allows str, int, float, bool, list of str)
+            clean_metadata = {
+                "text": chunk["text"],
+                "document_name": str(chunk.get("document_name", "unknown")),
+                "page": int(chunk.get("page", 0))
+            }
             
-            # Prepare data for Supabase
-            rows = []
-            for i, chunk in enumerate(chunks):
-                rows.append({
-                    "content": chunk["text"],
-                    "metadata": chunk, # Store full chunk metadata
-                    "embedding": embeddings[i].tolist()
-                })
+            # Merge additional metadata if present
+            if "metadata" in chunk and isinstance(chunk["metadata"], dict):
+                for k, v in chunk["metadata"].items():
+                    if isinstance(v, (str, int, float, bool)):
+                        clean_metadata[k] = v
+                    elif isinstance(v, list) and all(isinstance(x, str) for x in v):
+                        clean_metadata[k] = v
             
-            # Batch insert to avoid limits
-            batch_size = 50
-            for i in range(0, len(rows), batch_size):
-                batch = rows[i:i+batch_size]
-                try:
-                    self.supabase.table("documents").insert(batch).execute()
-                    print(f"Uploaded batch {i//batch_size + 1}")
-                except Exception as e:
-                    print(f"Error inserting batch to Supabase: {e}")
-                    # If table doesn't exist, we might fail here
-                    raise e
-                    
-        else:
-            # FAISS implementation
-            self.index = faiss.IndexFlatIP(self.dimension)
-            self.index.add(embeddings)
-            self.chunks = chunks # Store chunks for retrieval
-            print(f"FAISS index built with {self.index.ntotal} vectors")
+            vectors.append({
+                "id": f"{tenant_id}_{uuid.uuid4()}",
+                "values": embeddings[i].tolist(),
+                "metadata": clean_metadata
+            })
+            
+        # Pinecone upsert in batches of 100 to avoid request size limits
+        batch_size = 100
+        for i in range(0, len(vectors), batch_size):
+            batch = vectors[i:i + batch_size]
+            self.index.upsert(vectors=batch, namespace=tenant_id)
+            
+        print(f"✅ Successfully indexed {len(chunks)} chunks in Pinecone")
 
-    def search(self, query: str, top_k: int = 3) -> Tuple[List[float], List[int]]:
+    def search(self, query: str, top_k: int = 3, tenant_id: str = "default") -> Tuple[List[float], List[Dict]]:
         """
-        Search for most similar chunks
-        Returns: (scores, indices_or_results)
+        Search for most similar chunks using Cosine Similarity within a namespace
+        Returns: (scores, results)
         """
+        if not self.use_pinecone:
+            print("⚠️ Pinecone not available. Search failed.")
+            return [], []
+
         query_embedding = self.embedder.embed_query(query)
         
-        if self.use_supabase:
-            # RPC call to 'match_documents' function in Supabase
-            try:
-                response = self.supabase.rpc(
-                    "match_documents",
-                    {
-                        "query_embedding": query_embedding.tolist(),
-                        "match_threshold": 0.5, # Minimum similarity
-                        "match_count": top_k
-                    }
-                ).execute()
-                
-                # Format results to match expected output structure
-                # Return direct list of chunks instead of indices
-                results = response.data
-                scores = [r.get('similarity', 0) for r in results]
-                # For Supabase, we return the actual objects, so indices don't matter as much
-                # But the calling code expects indices into a 'chunks' list.
-                # We need to adapt the calling code in qa.py mostly.
-                # Strategy: Return raw results and handle in QA?
-                # Better: Return specific structure the QA expects.
-                return scores, results 
-                
-            except Exception as e:
-                print(f"Supabase search error: {e}")
-                return [], []
-                
-        else:
-            # FAISS Search
-            query_embedding = query_embedding.reshape(1, -1)
-            scores, indices = self.index.search(query_embedding, top_k)
-            return scores[0].tolist(), indices[0].tolist()
+        # Pinecone query
+        query_response = self.index.query(
+            vector=query_embedding.tolist(),
+            top_k=top_k,
+            include_metadata=True,
+            namespace=tenant_id
+        )
+            
+        results = []
+        scores = []
+        for match in query_response["matches"]:
+            metadata = match["metadata"]
+            results.append({
+                "text": metadata.get("text", ""),
+                "page": metadata.get("page", 0),
+                "metadata": metadata
+            })
+            scores.append(float(match["score"]))
+            
+        return scores, results
 
     def save_index(self, path: str):
-        if not self.use_supabase:
-            faiss.write_index(self.index, path)
-            print(f"Index saved to: {path}")
+        pass
 
     def load_index(self, path: str):
-        if not self.use_supabase:
-            if os.path.exists(path):
-                self.index = faiss.read_index(path)
-                print(f"Index loaded from: {path}")
-            else:
-                print("Index file not found (FAISS)")
+        pass

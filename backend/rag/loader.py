@@ -65,3 +65,40 @@ class PDFLoader:
             raise
         
         return pages_text
+
+
+class CSVLoader:
+    """
+    Loads and extracts text from CSV files (Product data, etc.)
+    """
+    
+    def extract_csv(self, csv_path: str) -> List[Dict[str, any]]:
+        """
+        Extract text from CSV, row by row
+        """
+        import csv
+        chunks = []
+        
+        try:
+            with open(csv_path, 'r', encoding='utf-8') as file:
+                reader = csv.DictReader(file)
+                for i, row in enumerate(reader, start=1):
+                    # Convert row dictionary to a descriptive string for better RAG context
+                    # Format: Key1: Value1, Key2: Value2...
+                    text_parts = [f"{key}: {value}" for key, value in row.items() if value]
+                    text = " | ".join(text_parts)
+                    
+                    if text.strip():
+                        chunks.append({
+                            "page": i, # Treat row number as "page" for compatibility
+                            "text": text,
+                            "metadata": row # Store original row data in metadata
+                        })
+                
+                print(f"Extracted {len(chunks)} rows from CSV")
+                
+        except Exception as e:
+            print(f"Error extracting CSV: {str(e)}")
+            raise
+            
+        return chunks

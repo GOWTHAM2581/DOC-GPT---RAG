@@ -25,11 +25,12 @@ export default function Upload({ onUploadComplete }) {
 
         const files = Array.from(e.dataTransfer.files);
         const pdfFile = files.find(f => f.type === 'application/pdf');
+        const csvFile = files.find(f => f.type === 'text/csv' || f.name.endsWith('.csv'));
 
-        if (pdfFile) {
-            await handleUpload(pdfFile);
+        if (pdfFile || csvFile) {
+            await handleUpload(pdfFile || csvFile);
         } else {
-            setError('Please upload a valid PDF document.');
+            setError('Please upload a valid PDF or CSV document.');
             setTimeout(() => setError(''), 3000);
         }
     }, []);
@@ -116,7 +117,7 @@ export default function Upload({ onUploadComplete }) {
                     >
                         <input
                             type="file"
-                            accept="application/pdf"
+                            accept="application/pdf,text/csv"
                             onChange={handleFileInput}
                             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                         />
@@ -132,8 +133,8 @@ export default function Upload({ onUploadComplete }) {
                             {/* Text */}
                             <div>
                                 <h3 className="text-xl font-bold text-white mb-2">Upload Document</h3>
-                                <p className="text-slate-400 text-sm mb-1">Drag and drop your PDF here, or click to browse</p>
-                                <p className="text-slate-600 text-xs">Only PDF files are supported for semantic analysis.</p>
+                                <p className="text-slate-400 text-sm mb-1">Drag and drop your PDF or CSV here, or click to browse</p>
+                                <p className="text-slate-600 text-xs">PDF and CSV files are supported for semantic analysis.</p>
                             </div>
                         </div>
                     </div>
